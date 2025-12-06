@@ -613,11 +613,13 @@ export default function CampaignsPage() {
   const approveCurrentEmail = () => {
     const currentEmail = getCurrentPreviewEmail();
     if (currentEmail) {
-      setApprovedEmails(new Set([...approvedEmails, currentEmail.memberId]));
+      const newApprovedEmails = new Set(approvedEmails);
+      newApprovedEmails.add(currentEmail.memberId);
+      setApprovedEmails(newApprovedEmails);
       // Auto-advance to next unapproved email
       const emails = getAllPreviewEmails();
       const nextUnapprovedIndex = emails.findIndex(
-        (email, idx) => idx > currentEmailIndex && !approvedEmails.has(email.memberId)
+        (email, idx) => idx > currentEmailIndex && !newApprovedEmails.has(email.memberId)
       );
       if (nextUnapprovedIndex !== -1) {
         setCurrentEmailIndex(nextUnapprovedIndex);
