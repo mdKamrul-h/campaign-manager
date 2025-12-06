@@ -46,8 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const fromEmail = process.env.FROM_EMAIL || 'Mallick NDC99 Ballot 7 <vote@mallicknazrul.com>';
-    const replyTo = process.env.REPLY_TO_EMAIL || 'vote@mallicknazrul.com';
+    const fromEmail = process.env.FROM_EMAIL || 'Campaign Manager <onboarding@resend.dev>';
 
     // Validate each email object
     const validatedEmails = emails.map((email: any, index: number) => {
@@ -63,16 +62,6 @@ export async function POST(request: NextRequest) {
         subject: email.subject.trim(),
         html: email.html || email.text || '',
         text: email.text || '',
-        reply_to: email.reply_to || replyTo,
-        headers: {
-          'X-Priority': '1', // High priority (1 = High, 3 = Normal, 5 = Low)
-          'X-MSMail-Priority': 'High',
-          'Importance': 'high',
-          // Avoid 'Precedence: bulk' as it signals marketing emails
-          // These headers help avoid promotions tab
-          'X-Mailer': 'Campaign Manager',
-          ...email.headers, // Allow custom headers to override
-        },
       };
     });
 
@@ -104,10 +93,12 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      console.log(`Batch email sent successfully. ${data.length || validatedEmails.length} emails processed`);
+      // Use validatedEmails.length since data is not an array
+      const emailCount = validatedEmails.length;
+      console.log(`Batch email sent successfully. ${emailCount} emails processed`);
       return NextResponse.json({ 
         success: true, 
-        count: data.length || validatedEmails.length,
+        count: emailCount,
         data: data || validatedEmails.map((_, i) => ({ id: `batch-${i}` }))
       });
     } catch (resendError: any) {
