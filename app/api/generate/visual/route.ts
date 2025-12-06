@@ -24,6 +24,10 @@ export async function POST(request: NextRequest) {
       quality: 'standard',
     });
 
+    if (!response.data || response.data.length === 0) {
+      throw new Error('No image generated');
+    }
+
     const imageUrl = response.data[0]?.url;
 
     if (!imageUrl) {
