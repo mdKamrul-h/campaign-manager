@@ -46,7 +46,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const fromEmail = process.env.FROM_EMAIL || 'Campaign Manager <onboarding@resend.dev>';
+    const fromEmail = process.env.FROM_EMAIL || 'Mallick NDC99 Ballot 7 <vote@mallicknazrul.com>';
+    const replyTo = process.env.REPLY_TO_EMAIL || 'vote@mallicknazrul.com';
 
     // Validate each email object
     const validatedEmails = emails.map((email: any, index: number) => {
@@ -56,12 +57,26 @@ export async function POST(request: NextRequest) {
       if (!email.subject || !email.subject.trim()) {
         throw new Error(`Email at index ${index} is missing subject`);
       }
+      
+      // Preserve reply_to and headers from email object, or use defaults
+      const emailReplyTo = email.reply_to || replyTo;
+      const emailHeaders = email.headers || {
+        'X-Priority': '1', // High priority (1 = High, 3 = Normal, 5 = Low)
+        'X-MSMail-Priority': 'High',
+        'Importance': 'high',
+        // Avoid 'Precedence: bulk' as it signals marketing emails
+        // These headers help avoid promotions tab
+        'X-Mailer': 'Campaign Manager',
+      };
+      
       return {
         from: email.from || fromEmail,
         to: Array.isArray(email.to) ? email.to : [email.to.trim()],
         subject: email.subject.trim(),
         html: email.html || email.text || '',
         text: email.text || '',
+        reply_to: emailReplyTo,
+        headers: emailHeaders,
       };
     });
 
