@@ -24,15 +24,14 @@ export async function POST(request: NextRequest) {
       quality: 'standard',
     });
 
-    if (!response.data || response.data.length === 0) {
+    // Extract data first to help TypeScript understand the type
+    const imageData = response.data;
+    
+    if (!imageData || imageData.length === 0 || !imageData[0]?.url) {
       throw new Error('No image generated');
     }
 
-    const imageUrl = response.data[0]?.url;
-
-    if (!imageUrl) {
-      throw new Error('No image generated');
-    }
+    const imageUrl = imageData[0].url;
 
     return NextResponse.json({ imageUrl });
   } catch (error: any) {
