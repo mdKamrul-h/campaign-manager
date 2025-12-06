@@ -247,3 +247,5 @@ UPDATE campaigns SET channel = 'email' WHERE channel IS NULL;
 -- 3. It will add missing columns and indexes
 -- 4. Run supabase-rls-policies.sql after this to enable RLS
 
+
+

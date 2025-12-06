@@ -32,3 +32,5 @@ FROM information_schema.columns
 WHERE table_name = 'members' 
 AND column_name = 'image_url';
 
+
+

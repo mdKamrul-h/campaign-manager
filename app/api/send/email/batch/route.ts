@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     const fromEmail = process.env.FROM_EMAIL || 'Mallick NDC99 Ballot 7 <vote@mallicknazrul.com>';
+    const replyTo = process.env.REPLY_TO_EMAIL || 'vote@mallicknazrul.com';
 
     // Validate each email object
     const validatedEmails = emails.map((email: any, index: number) => {
@@ -62,6 +63,16 @@ export async function POST(request: NextRequest) {
         subject: email.subject.trim(),
         html: email.html || email.text || '',
         text: email.text || '',
+        reply_to: email.reply_to || replyTo,
+        headers: {
+          'X-Priority': '1', // High priority (1 = High, 3 = Normal, 5 = Low)
+          'X-MSMail-Priority': 'High',
+          'Importance': 'high',
+          // Avoid 'Precedence: bulk' as it signals marketing emails
+          // These headers help avoid promotions tab
+          'X-Mailer': 'Campaign Manager',
+          ...email.headers, // Allow custom headers to override
+        },
       };
     });
 

@@ -87,3 +87,5 @@ export function getAvailableVariables(): Array<{ placeholder: string; descriptio
   ];
 }
 
+
+

@@ -138,6 +138,7 @@ export function createEmailHTML(content: string, visualUrl?: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   <title>Campaign Email</title>
   <style>
     body {
@@ -179,11 +180,15 @@ export function createEmailHTML(content: string, visualUrl?: string): string {
     .email-visual {
       margin: 30px 0;
       text-align: center;
+      width: 100%;
     }
     .email-visual img {
       max-width: 100%;
+      width: 100%;
       height: auto;
       border-radius: 8px;
+      display: block;
+      margin: 0 auto;
     }
     .email-signature {
       margin-top: 40px;
@@ -204,18 +209,37 @@ export function createEmailHTML(content: string, visualUrl?: string): string {
     }
   </style>
 </head>
-<body>
-  <div class="email-container">
-    <div class="email-content">
-      ${formattedContent}
-    </div>
-    ${visualUrl ? `
-    <div class="email-visual">
-      <img src="${visualUrl}" alt="Campaign visual" />
-    </div>
-    ` : ''}
-    ${signature}
-  </div>
+<body style="margin: 0; padding: 0; background-color: #f4f4f4;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f4f4f4;">
+    <tr>
+      <td align="center" style="padding: 20px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="padding: 30px;">
+              <div class="email-content" style="font-size: 16px; line-height: 1.8; color: #333333;">
+                ${formattedContent}
+              </div>
+              ${visualUrl ? `
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 30px 0;">
+                <tr>
+                  <td align="center" style="padding: 0;">
+                    <img 
+                      src="${visualUrl}" 
+                      alt="Campaign visual" 
+                      style="max-width: 100%; width: 100%; height: auto; display: block; border-radius: 8px; border: none; outline: none;"
+                      width="600"
+                    />
+                  </td>
+                </tr>
+              </table>
+              ` : ''}
+              ${signature}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
   `.trim();

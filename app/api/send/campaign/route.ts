@@ -172,6 +172,14 @@ export async function POST(request: NextRequest) {
               subject: personalizedTitle,
               text: textContent,
               html: htmlContent,
+              reply_to: process.env.REPLY_TO_EMAIL || 'vote@mallicknazrul.com',
+              headers: {
+                'X-Priority': '1', // High priority
+                'X-MSMail-Priority': 'High',
+                'Importance': 'high',
+                // Avoid 'Precedence: bulk' as it signals marketing emails
+                'X-Mailer': 'Campaign Manager',
+              },
             };
           });
 

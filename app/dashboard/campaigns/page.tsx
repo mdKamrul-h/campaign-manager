@@ -247,6 +247,7 @@ export default function CampaignsPage() {
 
     setLoading(true);
     try {
+      // Generate visual
       const response = await fetch('/api/generate/visual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -254,7 +255,34 @@ export default function CampaignsPage() {
       });
 
       const data = await response.json();
-      setGeneratedVisual(data.imageUrl);
+      const generatedImageUrl = data.imageUrl;
+      
+      if (generatedImageUrl) {
+        // Upload generated image to Supabase Storage for permanent URL
+        try {
+          const uploadFormData = new FormData();
+          uploadFormData.append('imageUrl', generatedImageUrl);
+          
+          const uploadResponse = await fetch('/api/upload/visual', {
+            method: 'POST',
+            body: uploadFormData,
+          });
+          
+          const uploadData = await uploadResponse.json();
+          
+          if (uploadResponse.ok && uploadData.url) {
+            setGeneratedVisual(uploadData.url); // Use permanent URL
+          } else {
+            // Fallback to temporary URL if upload fails
+            console.warn('Failed to upload generated visual, using temporary URL');
+            setGeneratedVisual(generatedImageUrl);
+          }
+        } catch (uploadError) {
+          console.error('Failed to upload generated visual:', uploadError);
+          // Fallback to temporary URL
+          setGeneratedVisual(generatedImageUrl);
+        }
+      }
     } catch (error) {
       console.error('Failed to generate visual:', error);
       alert('Failed to generate visual. Please check your OpenAI API key.');
@@ -288,11 +316,34 @@ export default function CampaignsPage() {
     }
   };
 
-  const handleCustomVisualUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCustomVisualUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setCustomVisual(file);
-      setCustomVisualUrl(URL.createObjectURL(file));
+      setLoading(true);
+      try {
+        // Upload to Supabase Storage
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch('/api/upload/visual', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.url) {
+          setCustomVisual(file);
+          setCustomVisualUrl(data.url); // Use permanent URL from Supabase
+        } else {
+          alert(data.error || 'Failed to upload visual');
+        }
+      } catch (error) {
+        console.error('Failed to upload visual:', error);
+        alert('Failed to upload visual. Please try again.');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -428,11 +479,9 @@ export default function CampaignsPage() {
   };
 
   const handleRemoveCustomVisual = () => {
-    if (customVisualUrl) {
-      URL.revokeObjectURL(customVisualUrl);
-      setCustomVisualUrl('');
-      setCustomVisual(null);
-    }
+    // No need to revoke URL since we're using permanent Supabase URLs now
+    setCustomVisualUrl('');
+    setCustomVisual(null);
     if (generatedVisual) {
       setGeneratedVisual('');
     }

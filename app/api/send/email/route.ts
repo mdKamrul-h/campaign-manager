@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     const fromEmail = process.env.FROM_EMAIL || 'Mallick NDC99 Ballot 7 <vote@mallicknazrul.com>';
+    const replyTo = process.env.REPLY_TO_EMAIL || 'vote@mallicknazrul.com';
     
     console.log(`Attempting to send email to: ${to}, from: ${fromEmail}, subject: ${subject}`);
 
@@ -40,6 +41,15 @@ export async function POST(request: NextRequest) {
       subject: subject.trim(),
       html: html || text || '',
       text: text || '',
+      reply_to: replyTo,
+      headers: {
+        'X-Priority': '1', // High priority (1 = High, 3 = Normal, 5 = Low)
+        'X-MSMail-Priority': 'High',
+        'Importance': 'high',
+        // Avoid 'Precedence: bulk' as it signals marketing emails
+        // These headers help avoid promotions tab
+        'X-Mailer': 'Campaign Manager',
+      },
     });
 
     if (error) {

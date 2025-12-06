@@ -103,3 +103,5 @@ If you're still having trouble finding the key:
 2. Make sure you're the project owner or have admin access
 3. Contact Supabase support if you're the project owner but still can't see the key
 
+
+

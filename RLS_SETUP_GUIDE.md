@@ -243,3 +243,5 @@ The current policies allow all operations, so your app should work exactly as be
 - [PostgreSQL RLS Documentation](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
 - [Supabase Security Best Practices](https://supabase.com/docs/guides/auth/security)
 
+
+

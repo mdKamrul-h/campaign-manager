@@ -180,3 +180,5 @@ https://your-project-id.supabase.co/rest/v1/
 
 If this fails, the project doesn't exist or the URL is wrong.
 
+
+

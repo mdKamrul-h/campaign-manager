@@ -143,3 +143,5 @@ lookup(`${projectId}.supabase.co`)
     console.log('7. Restart your development server');
   });
 
+
+
