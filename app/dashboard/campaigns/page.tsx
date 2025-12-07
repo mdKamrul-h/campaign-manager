@@ -464,13 +464,46 @@ export default function CampaignsPage() {
         setShowApproval(false);
         setShowEmailPreview(false);
       } else {
-        alert(`Failed to send campaign: ${result.error || 'Unknown error'}\n\nCheck your SMS configuration and phone numbers.`);
+        // Show contextual error message based on channel
+        const errorMessage = result.error || 'Unknown error';
+        let helpMessage = '';
+        
+        if (channel === 'email') {
+          helpMessage = 'Check your email configuration (RESEND_API_KEY) and ensure member email addresses are valid.';
+        } else if (channel === 'sms') {
+          helpMessage = 'Check your SMS configuration and phone numbers.';
+        } else {
+          helpMessage = 'Check your configuration and try again.';
+        }
+        
+        alert(`Failed to send campaign: ${errorMessage}\n\n${helpMessage}`);
         setShowApproval(false);
         setShowEmailPreview(false);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to send campaign:', error);
-      alert('Failed to send campaign. Please try again.');
+      
+      // Handle network errors (like "fetch failed")
+      const errorMessage = error.message || 'Unknown error';
+      let helpMessage = '';
+      
+      if (errorMessage.includes('fetch failed') || errorMessage.includes('Failed to fetch')) {
+        if (channel === 'email') {
+          helpMessage = 'Network error: Unable to reach the email service. Check:\n1. Your NEXTAUTH_URL environment variable\n2. Email service (Resend) API configuration\n3. Network connectivity';
+        } else if (channel === 'sms') {
+          helpMessage = 'Network error: Unable to reach the SMS service. Check:\n1. Your NEXTAUTH_URL environment variable\n2. SMS service configuration\n3. Network connectivity';
+        } else {
+          helpMessage = 'Network error: Unable to reach the service. Check your NEXTAUTH_URL and network connectivity.';
+        }
+      } else {
+        helpMessage = channel === 'email' 
+          ? 'Check your email configuration and try again.'
+          : channel === 'sms'
+          ? 'Check your SMS configuration and try again.'
+          : 'Please try again.';
+      }
+      
+      alert(`Failed to send campaign: ${errorMessage}\n\n${helpMessage}`);
       setShowApproval(false);
       setShowEmailPreview(false);
     } finally {

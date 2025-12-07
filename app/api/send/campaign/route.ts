@@ -193,11 +193,21 @@ export async function POST(request: NextRequest) {
         console.log(`Sending batch email to ${emailBatch.length} recipients`);
 
         // Send batch emails
-        const batchResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/send/email/batch`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ emails: emailBatch }),
-        });
+        let batchResponse;
+        try {
+          batchResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/send/email/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ emails: emailBatch }),
+          });
+        } catch (fetchError: any) {
+          // Handle network errors (fetch failed, DNS errors, etc.)
+          const errorMessage = fetchError.message || 'Unknown network error';
+          if (errorMessage.includes('fetch failed') || errorMessage.includes('Failed to fetch') || errorMessage.includes('ECONNREFUSED')) {
+            throw new Error(`Unable to reach email service. This usually means:\n1. NEXTAUTH_URL is incorrect (current: ${process.env.NEXTAUTH_URL || 'http://localhost:3000'})\n2. Email service endpoint is down\n3. Network connectivity issue\n\nOriginal error: ${errorMessage}`);
+          }
+          throw fetchError;
+        }
 
         // Check if response is HTML (error page) before parsing as JSON
         const contentType = batchResponse.headers.get('content-type');

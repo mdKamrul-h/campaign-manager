@@ -249,3 +249,5 @@ UPDATE campaigns SET channel = 'email' WHERE channel IS NULL;
 
 
 
+
+
