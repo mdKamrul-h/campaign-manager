@@ -17,6 +17,7 @@ export default function CampaignListPage() {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'draft' | 'scheduled' | 'sent'>('all');
   const [channelFilter, setChannelFilter] = useState<string>('');
+  const [targetFilter, setTargetFilter] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -60,7 +61,20 @@ export default function CampaignListPage() {
     const matchesSearch = !searchTerm || 
       campaign.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       campaign.content.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesChannel && matchesSearch;
+    
+    // Filter by target audience type
+    let matchesTarget = true;
+    if (targetFilter) {
+      const targetAudience = campaign.target_audience as any;
+      const targetType = targetAudience?.type || 'all';
+      if (targetFilter === 'batch-filter') {
+        matchesTarget = targetType === 'batch-filter';
+      } else {
+        matchesTarget = targetType === targetFilter;
+      }
+    }
+    
+    return matchesChannel && matchesSearch && matchesTarget;
   });
 
   const handleSchedule = async (campaign: Campaign) => {
@@ -342,11 +356,28 @@ export default function CampaignListPage() {
             </select>
           </div>
 
-          {(searchTerm || channelFilter) && (
+          <div className="flex items-center gap-2 ml-4">
+            <span className="text-sm font-medium text-gray-700">Target:</span>
+            <select
+              value={targetFilter}
+              onChange={(e) => setTargetFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+            >
+              <option value="">All Targets</option>
+              <option value="all">All Members</option>
+              <option value="batch">Specific Batch</option>
+              <option value="batch-filter">Batch Filter (Senior/Junior/Batchmate)</option>
+              <option value="membership">Membership Type</option>
+              <option value="select-members">Select Members</option>
+            </select>
+          </div>
+
+          {(searchTerm || channelFilter || targetFilter) && (
             <button
               onClick={() => {
                 setSearchTerm('');
                 setChannelFilter('');
+                setTargetFilter('');
               }}
               className="text-sm text-gray-600 hover:text-gray-900"
             >
@@ -369,7 +400,7 @@ export default function CampaignListPage() {
         <div className="text-center py-12 bg-white rounded-lg shadow">
           <p className="text-lg mb-2 text-gray-500">No campaigns found</p>
           <p className="text-sm text-gray-400 mb-4">
-            {searchTerm || channelFilter ? 'Try adjusting your filters' : 'Create your first campaign'}
+            {searchTerm || channelFilter || targetFilter ? 'Try adjusting your filters' : 'Create your first campaign'}
           </p>
           <Link
             href="/dashboard/campaigns"
@@ -447,9 +478,10 @@ export default function CampaignListPage() {
                     </button>
                     <Link
                       href={`/dashboard/campaigns?edit=${campaign.id}`}
-                      className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm"
+                      className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm"
                     >
                       <Edit className="w-4 h-4" />
+                      Edit
                     </Link>
                   </>
                 )}

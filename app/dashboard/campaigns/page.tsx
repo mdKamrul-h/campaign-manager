@@ -1,13 +1,18 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Sparkles, Image as ImageIcon, Send, Upload, Edit3, Eye, RefreshCw, X, Info, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { Sparkles, Image as ImageIcon, Send, Upload, Edit3, Eye, RefreshCw, X, Info, ChevronLeft, ChevronRight, Check, Save } from 'lucide-react';
 import { Member } from '@/types';
 import { getAvailableVariables, replaceVariables } from '@/lib/variable-replacement';
 import { useMembers } from '@/contexts/MembersContext';
 
 export default function CampaignsPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const editCampaignId = searchParams.get('edit');
   const [loading, setLoading] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState(false);
   const { members, loading: membersLoading } = useMembers();
 
   // Form state
@@ -48,6 +53,12 @@ export default function CampaignsPage() {
   const [sendText, setSendText] = useState(true);
   const [sendVisual, setSendVisual] = useState(true);
   const [smsSenderId, setSmsSenderId] = useState('Mallick NDC'); // SMS Sender ID
+
+  // Templates
+  const [templates, setTemplates] = useState<Array<{ id: string; name: string; title: string; content: string; channel: string; visual_url?: string }>>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState('');
 
   // Filter members for selection - defined before useEffects
   const filterMembersForSelection = useCallback(() => {
@@ -100,8 +111,16 @@ export default function CampaignsPage() {
     setFilteredMembersForSelection(filtered);
   }, [members, memberSearchTerm, memberFilterType, memberFilterBatch]);
 
+  // Load campaign for editing
+  useEffect(() => {
+    if (editCampaignId) {
+      loadCampaignForEdit(editCampaignId);
+    }
+  }, [editCampaignId]);
+
   useEffect(() => {
     fetchBatches();
+    fetchTemplates();
     
     // Listen for member updates from members page
     const handleMemberUpdate = () => {
@@ -121,6 +140,45 @@ export default function CampaignsPage() {
       window.removeEventListener('memberUpdated', handleMemberUpdate);
     };
   }, [targetType, filterMembersForSelection]);
+
+  const loadCampaignForEdit = async (campaignId: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}`);
+      if (response.ok) {
+        const campaign = await response.json();
+        setTitle(campaign.title || '');
+        setChannel(campaign.channel || 'email');
+        setGeneratedContent(campaign.content || '');
+        setCustomContent(campaign.content || '');
+        setUseCustomContent(true);
+        setCustomVisualUrl(campaign.custom_visual_url || campaign.visual_url || '');
+        setGeneratedVisual(campaign.visual_url || '');
+        setScheduledAt(campaign.scheduled_at ? new Date(campaign.scheduled_at).toISOString().slice(0, 16) : '');
+        
+        // Load target audience
+        const targetAudience = campaign.target_audience as any;
+        if (targetAudience) {
+          setTargetType(targetAudience.type || 'all');
+          setTargetValue(targetAudience.value || '');
+          if (targetAudience.selectedMemberIds) {
+            setSelectedMemberIds(targetAudience.selectedMemberIds);
+          }
+        }
+        
+        setEditingCampaign(true);
+      } else {
+        alert('Failed to load campaign for editing');
+        router.push('/dashboard/campaigns');
+      }
+    } catch (error) {
+      console.error('Failed to load campaign:', error);
+      alert('Failed to load campaign for editing');
+      router.push('/dashboard/campaigns');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Refetch batches when page becomes visible (user navigates back or switches tabs)
   useEffect(() => {
@@ -208,6 +266,88 @@ export default function CampaignsPage() {
       setSelectedMemberIds(data.map((m: Member) => m.id));
     } catch (error) {
       console.error('Failed to fetch batch members:', error);
+    }
+  };
+
+  const fetchTemplates = async () => {
+    try {
+      const response = await fetch('/api/templates');
+      if (response.ok) {
+        const data = await response.json();
+        setTemplates(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch templates:', error);
+    }
+  };
+
+  const saveAsTemplate = async () => {
+    const finalContent = useCustomContent ? customContent : generatedContent;
+    if (!templateName || !finalContent?.trim()) {
+      alert('Please provide a template name and content');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: templateName,
+          title: title || '',
+          content: finalContent,
+          channel,
+          visual_url: customVisualUrl || generatedVisual || null,
+        }),
+      });
+
+      if (response.ok) {
+        alert('Template saved successfully!');
+        setShowSaveTemplate(false);
+        setTemplateName('');
+        await fetchTemplates();
+      } else {
+        const result = await response.json();
+        alert(`Failed to save template: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to save template:', error);
+      alert('Failed to save template. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadTemplate = (template: any) => {
+    setTitle(template.title || '');
+    setChannel(template.channel || 'email');
+    setGeneratedContent(template.content || '');
+    setCustomContent(template.content || '');
+    setUseCustomContent(true);
+    if (template.visual_url) {
+      setCustomVisualUrl(template.visual_url);
+      setGeneratedVisual(template.visual_url);
+    }
+    setShowTemplates(false);
+  };
+
+  const deleteTemplate = async (templateId: string, templateName: string) => {
+    if (!confirm(`Delete template "${templateName}"?`)) return;
+
+    try {
+      const response = await fetch(`/api/templates/${templateId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        await fetchTemplates();
+      } else {
+        alert('Failed to delete template');
+      }
+    } catch (error) {
+      console.error('Failed to delete template:', error);
+      alert('Failed to delete template. Please try again.');
     }
   };
 
@@ -413,6 +553,35 @@ export default function CampaignsPage() {
 
     setLoading(true);
     try {
+      // If editing, update the campaign first
+      if (editingCampaign && editCampaignId) {
+        const updateResponse = await fetch(`/api/campaigns/${editCampaignId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            content: finalContent || '',
+            visual_url: sendVisual ? (customVisualUrl || generatedVisual) : null,
+            custom_visual_url: sendVisual ? (customVisualUrl || generatedVisual) : null,
+            channel,
+            target_audience: {
+              type: targetType,
+              value: targetValue,
+              selectedMemberIds: (targetType === 'batch' || targetType === 'select-members') && selectedMemberIds.length > 0 ? selectedMemberIds : undefined,
+            },
+            scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+            status: scheduledAt && new Date(scheduledAt) > new Date() ? 'scheduled' : 'draft',
+          }),
+        });
+
+        if (!updateResponse.ok) {
+          const result = await updateResponse.json();
+          alert(`Failed to update campaign: ${result.error}`);
+          setLoading(false);
+          return;
+        }
+      }
+
       const response = await fetch('/api/send/campaign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -439,7 +608,11 @@ export default function CampaignsPage() {
         // Check if campaign was scheduled
         if (result.scheduled) {
           alert(result.message || `Campaign scheduled for ${new Date(scheduledAt).toLocaleString()}`);
-          resetForm();
+          if (editingCampaign) {
+            router.push('/dashboard/campaigns/list');
+          } else {
+            resetForm();
+          }
           setShowApproval(false);
           setShowEmailPreview(false);
           return;
@@ -460,7 +633,11 @@ export default function CampaignsPage() {
           alert(`Some messages failed:\n\n${failedDetails}\n\nCheck the browser console for more details.`);
         }
         
-        resetForm();
+        if (editingCampaign) {
+          router.push('/dashboard/campaigns/list');
+        } else {
+          resetForm();
+        }
         setShowApproval(false);
         setShowEmailPreview(false);
       } else {
@@ -543,6 +720,8 @@ export default function CampaignsPage() {
     setCurrentEmailIndex(0);
     setApprovedEmails(new Set());
     setModifiedEmails(new Map());
+    setEditingCampaign(false);
+    router.push('/dashboard/campaigns');
   };
 
   const getBatches = () => {
@@ -703,13 +882,25 @@ export default function CampaignsPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Create Campaign</h1>
-        <button
-          onClick={resetForm}
-          className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-        >
-          Reset Form
-        </button>
+        <h1 className="text-3xl font-bold text-gray-900">
+          {editingCampaign ? 'Edit Campaign' : 'Create Campaign'}
+        </h1>
+        <div className="flex gap-2">
+          {editingCampaign && (
+            <button
+              onClick={() => router.push('/dashboard/campaigns/list')}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+            >
+              Cancel Edit
+            </button>
+          )}
+          <button
+            onClick={resetForm}
+            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+          >
+            {editingCampaign ? 'Reset' : 'Reset Form'}
+          </button>
+        </div>
       </div>
 
       {/* Main Grid Layout */}
@@ -1136,26 +1327,38 @@ export default function CampaignsPage() {
                         <span className="ml-2 text-xs text-amber-600 font-normal">⚠️ Required</span>
                       )}
                     </label>
-                    <div className="relative group">
-                      <button
-                        type="button"
-                        className="text-blue-600 hover:text-blue-800"
-                        title="Available variables"
-                      >
-                        <Info className="w-4 h-4" />
-                      </button>
-                      <div className="absolute right-0 top-6 hidden group-hover:block z-10 bg-white border border-gray-300 rounded-lg shadow-lg p-3 min-w-[280px]">
-                        <div className="text-xs font-semibold text-gray-700 mb-2">Available Variables:</div>
-                        <div className="space-y-1 text-xs">
-                          {getAvailableVariables().map((v, i) => (
-                            <div key={i} className="flex justify-between">
-                              <code className="text-blue-600">{v.placeholder}</code>
-                              <span className="text-gray-500 ml-2">{v.description}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-2 pt-2 border-t">
-                          Variables will be replaced with actual member data when sending.
+                    <div className="flex items-center gap-2">
+                      {customContent && (
+                        <button
+                          onClick={() => setShowSaveTemplate(true)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition"
+                          title="Save as template"
+                        >
+                          <Save className="w-3 h-3" />
+                          Save Template
+                        </button>
+                      )}
+                      <div className="relative group">
+                        <button
+                          type="button"
+                          className="text-blue-600 hover:text-blue-800"
+                          title="Available variables"
+                        >
+                          <Info className="w-4 h-4" />
+                        </button>
+                        <div className="absolute right-0 top-6 hidden group-hover:block z-10 bg-white border border-gray-300 rounded-lg shadow-lg p-3 min-w-[280px]">
+                          <div className="text-xs font-semibold text-gray-700 mb-2">Available Variables:</div>
+                          <div className="space-y-1 text-xs">
+                            {getAvailableVariables().map((v, i) => (
+                              <div key={i} className="flex justify-between">
+                                <code className="text-blue-600">{v.placeholder}</code>
+                                <span className="text-gray-500 ml-2">{v.description}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-2 pt-2 border-t">
+                            Variables will be replaced with actual member data when sending.
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1191,9 +1394,19 @@ export default function CampaignsPage() {
                         </span>
                       )}
                     </label>
-                    {channel === 'sms' && generatedContent.length > 160 && (
-                      <span className="text-xs text-amber-600">⚠️ Long SMS</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {channel === 'sms' && generatedContent.length > 160 && (
+                        <span className="text-xs text-amber-600">⚠️ Long SMS</span>
+                      )}
+                      <button
+                        onClick={() => setShowSaveTemplate(true)}
+                        className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition"
+                        title="Save as template"
+                      >
+                        <Save className="w-3 h-3" />
+                        Save Template
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     value={generatedContent}
@@ -1221,6 +1434,59 @@ export default function CampaignsPage() {
                   </div>
                 </div>
               )}
+
+              {/* Templates Section */}
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Templates
+                  </label>
+                  <button
+                    onClick={() => setShowTemplates(!showTemplates)}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showTemplates ? 'Hide' : 'Show'} Templates ({templates.length})
+                  </button>
+                </div>
+                {showTemplates && (
+                  <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 max-h-60 overflow-y-auto">
+                    {templates.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-4">No templates saved yet</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {templates
+                          .filter(t => !channel || t.channel === channel)
+                          .map((template) => (
+                            <div key={template.id} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200 hover:bg-gray-50">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-900 truncate">{template.name}</div>
+                                <div className="text-xs text-gray-500 truncate">{template.title || 'No title'}</div>
+                                <div className="text-xs text-gray-400 capitalize">{template.channel}</div>
+                              </div>
+                              <div className="flex items-center gap-2 ml-2">
+                                <button
+                                  onClick={() => loadTemplate(template)}
+                                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                                >
+                                  Load
+                                </button>
+                                <button
+                                  onClick={() => deleteTemplate(template.id, template.name)}
+                                  className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        {templates.filter(t => !channel || t.channel === channel).length === 0 && (
+                          <p className="text-sm text-gray-500 text-center py-4">No templates for {channel} channel</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1376,13 +1642,19 @@ export default function CampaignsPage() {
                   
                   setLoading(true);
                   try {
-                    const response = await fetch('/api/campaigns', {
-                      method: 'POST',
+                    const url = editingCampaign && editCampaignId 
+                      ? `/api/campaigns/${editCampaignId}`
+                      : '/api/campaigns';
+                    const method = editingCampaign && editCampaignId ? 'PUT' : 'POST';
+                    
+                    const response = await fetch(url, {
+                      method,
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         title,
                         content: finalContent,
                         visual_url: sendVisual ? (customVisualUrl || generatedVisual) : null,
+                        custom_visual_url: sendVisual ? (customVisualUrl || generatedVisual) : null,
                         channel,
                         status: 'draft',
                         target_audience: {
@@ -1395,8 +1667,14 @@ export default function CampaignsPage() {
                     });
 
                     if (response.ok) {
-                      alert('Campaign saved as draft. You can schedule or send it later from the Campaign List page.');
-                      resetForm();
+                      alert(editingCampaign 
+                        ? 'Campaign updated successfully!'
+                        : 'Campaign saved as draft. You can schedule or send it later from the Campaign List page.');
+                      if (editingCampaign) {
+                        router.push('/dashboard/campaigns/list');
+                      } else {
+                        resetForm();
+                      }
                     } else {
                       const result = await response.json();
                       alert(`Failed to save draft: ${result.error}`);
@@ -1410,7 +1688,7 @@ export default function CampaignsPage() {
                 }}
                 className="w-full flex items-center justify-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition font-medium"
               >
-                Save as Draft
+                {editingCampaign ? 'Update Campaign' : 'Save as Draft'}
               </button>
             </div>
           </div>
@@ -1656,6 +1934,53 @@ export default function CampaignsPage() {
           </div>
         );
       })()}
+
+      {/* Save Template Modal */}
+      {showSaveTemplate && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">Save as Template</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Template Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="e.g., Welcome Email Template"
+                  />
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
+                  <p>This will save your current content and visual as a reusable template.</p>
+                  <p className="mt-1">Channel: <strong>{channel}</strong></p>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowSaveTemplate(false);
+                    setTemplateName('');
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveAsTemplate}
+                  disabled={loading || !templateName}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:bg-green-400 font-medium"
+                >
+                  {loading ? 'Saving...' : 'Save Template'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Approval Modal */}
       {showApproval && (
