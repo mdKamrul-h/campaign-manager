@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Users, Send, FileText, CheckCircle, Clock, Mail, AlertCircle } from 'lucide-react';
+import { Users, Send, FileText, CheckCircle, Mail, AlertCircle } from 'lucide-react';
 
 interface Stats {
   totalMembers: number;
   totalCampaigns: number;
   totalDocuments: number;
   sentCampaigns: number;
-  scheduledCampaigns: number;
   draftCampaigns: number;
   totalMessagesSent: number;
   failedMessages: number;
@@ -21,7 +20,6 @@ export default function DashboardPage() {
     totalCampaigns: 0,
     totalDocuments: 0,
     sentCampaigns: 0,
-    scheduledCampaigns: 0,
     draftCampaigns: 0,
     totalMessagesSent: 0,
     failedMessages: 0,
@@ -80,13 +78,6 @@ export default function DashboardPage() {
       icon: CheckCircle, 
       color: 'bg-green-500',
       description: 'Successfully sent'
-    },
-    { 
-      title: 'Scheduled', 
-      value: stats.scheduledCampaigns, 
-      icon: Clock, 
-      color: 'bg-yellow-500',
-      description: 'Pending delivery'
     },
     { 
       title: 'Draft Campaigns', 

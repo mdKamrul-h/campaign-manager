@@ -18,7 +18,6 @@ export async function POST(request: NextRequest) {
       smsSenderId, // Custom SMS sender ID
       modifiedEmails, // Modified emails: { memberId: { subject, content } }
       approvedMemberIds, // Only send to approved member IDs if provided
-      scheduled_at, // Scheduled date/time for the campaign
     } = await request.json();
 
     // Validation: Must send either text or visual
@@ -125,10 +124,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Determine if this is a scheduled campaign
-    const isScheduled = scheduled_at && new Date(scheduled_at) > new Date();
-    const campaignStatus = isScheduled ? 'scheduled' : 'sent';
-
     // Save campaign
     const { data: campaign, error: campaignError } = await supabaseAdmin
       .from('campaigns')
@@ -137,25 +132,13 @@ export async function POST(request: NextRequest) {
         content,
         visual_url,
         channel,
-        status: campaignStatus,
+        status: 'sent',
         target_audience: { type: targetType, value: targetValue },
-        scheduled_at: scheduled_at || null,
       }])
       .select()
       .single();
 
     if (campaignError) throw campaignError;
-
-    // If scheduled, return early without sending
-    if (isScheduled) {
-      return NextResponse.json({
-        success: true,
-        campaign_id: campaign.id,
-        scheduled: true,
-        scheduled_at: scheduled_at,
-        message: 'Campaign scheduled successfully. It will be sent automatically at the scheduled time.',
-      });
-    }
 
     // For email campaigns, use batch sending for better performance
     if (channel === 'email') {

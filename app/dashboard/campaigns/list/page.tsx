@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Calendar, Send, Clock, Trash2, Edit, Eye, Sparkles, Plus, Zap, Filter, Search } from 'lucide-react';
+import { Send, Trash2, Edit, Plus, Zap, Filter, Search } from 'lucide-react';
 import { Campaign } from '@/types';
 import Link from 'next/link';
 
@@ -15,14 +15,11 @@ interface CampaignTemplate {
 export default function CampaignListPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'draft' | 'scheduled' | 'sent'>('all');
+  const [filter, setFilter] = useState<'all' | 'draft' | 'sent'>('all');
   const [channelFilter, setChannelFilter] = useState<string>('');
   const [targetFilter, setTargetFilter] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showAutoCampaignModal, setShowAutoCampaignModal] = useState(false);
-  const [scheduling, setScheduling] = useState(false);
   const [creating, setCreating] = useState(false);
 
   // Auto campaign form state
@@ -77,75 +74,6 @@ export default function CampaignListPage() {
     return matchesChannel && matchesSearch && matchesTarget;
   });
 
-  const handleSchedule = async (campaign: Campaign) => {
-    setSelectedCampaign(campaign);
-    setShowScheduleModal(true);
-  };
-
-  const handleAISchedule = async () => {
-    if (!selectedCampaign) return;
-
-    setScheduling(true);
-    try {
-      const response = await fetch('/api/campaigns/schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          campaignId: selectedCampaign.id,
-          campaignContent: selectedCampaign.content,
-          channel: selectedCampaign.channel,
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (response.ok && result.success) {
-        alert(`Campaign scheduled!\n\nScheduled for: ${new Date(result.scheduledAt).toLocaleString()}\n\nReasoning: ${result.reasoning}`);
-        await fetchCampaigns();
-        setShowScheduleModal(false);
-        setSelectedCampaign(null);
-      } else {
-        alert(`Failed to schedule: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('Failed to schedule campaign:', error);
-      alert('Failed to schedule campaign. Please try again.');
-    } finally {
-      setScheduling(false);
-    }
-  };
-
-  const handleManualSchedule = async (dateTime: string) => {
-    if (!selectedCampaign) return;
-
-    setScheduling(true);
-    try {
-      const response = await fetch(`/api/campaigns/${selectedCampaign.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...selectedCampaign,
-          scheduled_at: new Date(dateTime).toISOString(),
-          status: 'scheduled',
-        }),
-      });
-
-      if (response.ok) {
-        alert('Campaign scheduled successfully!');
-        await fetchCampaigns();
-        setShowScheduleModal(false);
-        setSelectedCampaign(null);
-      } else {
-        const result = await response.json();
-        alert(`Failed to schedule: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('Failed to schedule campaign:', error);
-      alert('Failed to schedule campaign. Please try again.');
-    } finally {
-      setScheduling(false);
-    }
-  };
 
   const handleDelete = async (campaignId: string) => {
     if (!confirm('Are you sure you want to delete this campaign?')) return;
@@ -325,7 +253,7 @@ export default function CampaignListPage() {
             <Filter className="w-4 h-4 text-gray-500" />
             <span className="text-sm font-medium text-gray-700">Status:</span>
           </div>
-          {(['all', 'draft', 'scheduled', 'sent'] as const).map((status) => (
+          {(['all', 'draft', 'sent'] as const).map((status) => (
             <button
               key={status}
               onClick={() => setFilter(status)}
@@ -429,15 +357,9 @@ export default function CampaignListPage() {
                     </span>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-3 text-xs text-gray-600 mb-3">
-                    <div>
-                      <span className="font-medium">Created:</span>
-                      <p>{formatDate(campaign.created_at)}</p>
-                    </div>
-                    <div>
-                      <span className="font-medium">Scheduled:</span>
-                      <p>{formatDate(campaign.scheduled_at)}</p>
-                    </div>
+                  <div className="text-xs text-gray-600 mb-3">
+                    <span className="font-medium">Created:</span>
+                    <p>{formatDate(campaign.created_at)}</p>
                   </div>
                 </div>
               </div>
@@ -463,13 +385,6 @@ export default function CampaignListPage() {
                 {campaign.status === 'draft' && (
                   <>
                     <button
-                      onClick={() => handleSchedule(campaign)}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
-                    >
-                      <Calendar className="w-4 h-4" />
-                      Schedule
-                    </button>
-                    <button
                       onClick={() => handleSendNow(campaign)}
                       className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
                     >
@@ -484,13 +399,6 @@ export default function CampaignListPage() {
                       Edit
                     </Link>
                   </>
-                )}
-                
-                {campaign.status === 'scheduled' && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-blue-100 text-blue-800 rounded-lg text-sm w-full justify-center">
-                    <Clock className="w-4 h-4" />
-                    Scheduled for {formatDate(campaign.scheduled_at)}
-                  </div>
                 )}
 
                 {campaign.status === 'sent' && (
@@ -512,64 +420,6 @@ export default function CampaignListPage() {
         </div>
       )}
 
-      {/* Schedule Modal */}
-      {showScheduleModal && selectedCampaign && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Schedule Campaign</h2>
-              <p className="text-sm text-gray-600 mb-4">{selectedCampaign.title}</p>
-
-              <div className="space-y-4">
-                <button
-                  onClick={handleAISchedule}
-                  disabled={scheduling}
-                  className="w-full flex items-center justify-center gap-2 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 transition disabled:bg-purple-400 font-medium"
-                >
-                  <Sparkles className="w-5 h-5" />
-                  {scheduling ? 'Scheduling...' : 'Let AI Decide Best Time'}
-                </button>
-
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-300"></div>
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-white text-gray-500">OR</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Schedule Manually
-                  </label>
-                  <input
-                    type="datetime-local"
-                    min={new Date().toISOString().slice(0, 16)}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        handleManualSchedule(e.target.value);
-                      }
-                    }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowScheduleModal(false);
-                  setSelectedCampaign(null);
-                }}
-                className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Quick Create Auto Campaign Modal */}
       {showAutoCampaignModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -577,7 +427,7 @@ export default function CampaignListPage() {
             <div className="p-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">Quick Create Campaign</h2>
               <p className="text-sm text-gray-600 mb-4">
-                Create a campaign using pre-generated content. You can schedule it later.
+                Create a campaign using pre-generated content. You can send it later.
               </p>
 
               <div className="space-y-4">

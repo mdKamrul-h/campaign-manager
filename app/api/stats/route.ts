@@ -31,15 +31,6 @@ export async function GET() {
       console.error('Error fetching sent campaigns count:', sentError);
     }
 
-    // Get scheduled campaigns
-    const { count: scheduledCampaigns, error: scheduledError } = await supabaseAdmin
-      .from('campaigns')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'scheduled');
-
-    if (scheduledError) {
-      console.error('Error fetching scheduled campaigns count:', scheduledError);
-    }
 
     // Get draft campaigns
     const { count: draftCampaigns, error: draftError } = await supabaseAdmin
@@ -84,7 +75,6 @@ export async function GET() {
       totalMembers: totalMembers || 0,
       totalCampaigns: totalCampaigns || 0,
       sentCampaigns: sentCampaigns || 0,
-      scheduledCampaigns: scheduledCampaigns || 0,
       draftCampaigns: draftCampaigns || 0,
       totalDocuments: totalDocuments || 0,
       totalMessagesSent: totalMessagesSent || 0,
@@ -97,7 +87,6 @@ export async function GET() {
         totalMembers: 0,
         totalCampaigns: 0,
         sentCampaigns: 0,
-        scheduledCampaigns: 0,
         draftCampaigns: 0,
         totalDocuments: 0,
         totalMessagesSent: 0,

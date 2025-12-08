@@ -28,7 +28,6 @@ export default function CampaignsPage() {
   const [modificationSuggestion, setModificationSuggestion] = useState('');
   const [useCustomContent, setUseCustomContent] = useState(false);
   const [customContent, setCustomContent] = useState('');
-  const [scheduledAt, setScheduledAt] = useState('');
 
   // Target audience
   const [targetType, setTargetType] = useState<'all' | 'batch' | 'batch-filter' | 'membership' | 'select-members'>('all');
@@ -154,7 +153,6 @@ export default function CampaignsPage() {
         setUseCustomContent(true);
         setCustomVisualUrl(campaign.custom_visual_url || campaign.visual_url || '');
         setGeneratedVisual(campaign.visual_url || '');
-        setScheduledAt(campaign.scheduled_at ? new Date(campaign.scheduled_at).toISOString().slice(0, 16) : '');
         
         // Load target audience
         const targetAudience = campaign.target_audience as any;
@@ -569,8 +567,7 @@ export default function CampaignsPage() {
               value: targetValue,
               selectedMemberIds: (targetType === 'batch' || targetType === 'select-members') && selectedMemberIds.length > 0 ? selectedMemberIds : undefined,
             },
-            scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-            status: scheduledAt && new Date(scheduledAt) > new Date() ? 'scheduled' : 'draft',
+          status: 'draft',
           }),
         });
 
@@ -598,26 +595,12 @@ export default function CampaignsPage() {
           smsSenderId: channel === 'sms' ? smsSenderId : undefined,
           modifiedEmails: channel === 'email' ? Object.fromEntries(modifiedEmails) : undefined,
           approvedMemberIds: channel === 'email' && approvedEmails.size > 0 ? Array.from(approvedEmails) : undefined,
-          scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
         }),
       });
 
       const result = await response.json();
       
       if (response.ok && result.success) {
-        // Check if campaign was scheduled
-        if (result.scheduled) {
-          alert(result.message || `Campaign scheduled for ${new Date(scheduledAt).toLocaleString()}`);
-          if (editingCampaign) {
-            router.push('/dashboard/campaigns/list');
-          } else {
-            resetForm();
-          }
-          setShowApproval(false);
-          setShowEmailPreview(false);
-          return;
-        }
-        
         const message = result.warning 
           ? `Campaign sent with warnings:\n${result.warning}\n\nSent: ${result.sent}/${result.total}`
           : `Campaign sent successfully!\n\nSent: ${result.sent}/${result.total} messages`;
@@ -708,7 +691,6 @@ export default function CampaignsPage() {
     setModificationSuggestion('');
     setUseCustomContent(false);
     setCustomContent('');
-    setScheduledAt('');
     setTargetType('all');
     setTargetValue('');
     setSendText(true);
@@ -1595,40 +1577,13 @@ export default function CampaignsPage() {
                 </div>
               </div>
 
-              {/* Scheduling */}
-              <div className="border-t pt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Schedule Campaign (Optional)
-                </label>
-                <input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  min={new Date().toISOString().slice(0, 16)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-                {scheduledAt && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    Campaign will be sent on: {new Date(scheduledAt).toLocaleString()}
-                  </p>
-                )}
-                {scheduledAt && (
-                  <button
-                    onClick={() => setScheduledAt('')}
-                    className="mt-2 text-xs text-red-600 hover:text-red-800"
-                  >
-                    Clear Schedule
-                  </button>
-                )}
-              </div>
-
               <button
                 onClick={handleSendCampaign}
                 disabled={loading || (!sendText && !sendVisual) || (sendText && !(useCustomContent ? customContent : generatedContent)?.trim()) || (sendVisual && !customVisualUrl && !generatedVisual) || (targetType === 'batch' && (!targetValue || selectedMemberIds.length === 0)) || (targetType === 'select-members' && selectedMemberIds.length === 0) || (targetType === 'membership' && !targetValue) || (targetType === 'batch-filter' && !targetValue)}
                 className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-blue-400 font-medium"
               >
                 <Send className="w-5 h-5" />
-                {loading ? (scheduledAt ? 'Scheduling...' : 'Sending...') : (scheduledAt ? 'Schedule Campaign' : 'Send Campaign')}
+                {loading ? 'Sending...' : 'Send Campaign'}
               </button>
               
               <button
@@ -1662,7 +1617,6 @@ export default function CampaignsPage() {
                           value: targetValue,
                           selectedMemberIds: (targetType === 'batch' || targetType === 'select-members') && selectedMemberIds.length > 0 ? selectedMemberIds : undefined,
                         },
-                        scheduled_at: scheduledAt || null,
                       }),
                     });
 
