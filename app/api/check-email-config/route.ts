@@ -29,6 +29,28 @@ export async function GET() {
         // Note: This is a lightweight check - we're not sending an email
         const testResult = await resend.domains.list();
         
+        // Also test if batch API is accessible (without actually sending)
+        let batchApiAccessible = false;
+        try {
+          // Try to call batch.send with empty array to test API access
+          // This should fail with a validation error, not an auth error
+          const batchTest = await resend.batch.send([]);
+          batchApiAccessible = true;
+        } catch (batchTestError: any) {
+          const batchErrorMsg = String(batchTestError.message || batchTestError);
+          // If it's a validation error (empty array), that's fine - API is accessible
+          // If it's an auth error, that's the problem
+          if (batchErrorMsg.includes('Authentication Required') || 
+              batchErrorMsg.includes('Unauthorized') ||
+              batchErrorMsg.includes('401') ||
+              batchErrorMsg.includes('403')) {
+            batchApiAccessible = false;
+          } else {
+            // Validation error means API is accessible
+            batchApiAccessible = true;
+          }
+        }
+        
         return NextResponse.json({
           success: true,
           message: 'Email configuration is valid!',
@@ -36,6 +58,10 @@ export async function GET() {
             ...diagnostics,
             apiKeyTest: 'PASSED - API key is valid and working',
             canAccessResend: true,
+            batchApiAccessible: batchApiAccessible,
+            note: batchApiAccessible 
+              ? 'Both domains and batch APIs are accessible'
+              : 'Domains API works but batch API may have permission issues'
           },
         });
       } catch (testError: any) {

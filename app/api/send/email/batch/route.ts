@@ -61,10 +61,68 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    const { data, error } = await resend.batch.send(validatedEmails);
+    let data, error;
+    try {
+      const result = await resend.batch.send(validatedEmails);
+      data = result.data;
+      error = result.error;
+    } catch (resendException: any) {
+      console.error('Resend batch send exception:', resendException);
+      console.error('Exception type:', typeof resendException);
+      console.error('Exception keys:', Object.keys(resendException || {}));
+      
+      // Check all possible fields where HTML might be
+      const errorString = String(resendException.message || resendException);
+      const errorResponse = resendException.response || resendException.data || resendException.body || resendException.text;
+      const errorText = errorResponse ? String(errorResponse) : '';
+      const fullError = JSON.stringify(resendException, null, 2);
+      
+      // Check for HTML authentication errors in any field
+      const hasHtmlError = 
+        errorString.includes('Authentication Required') || 
+        errorString.includes('<!doctype html>') ||
+        errorString.includes('<title>Authentication Required</title>') ||
+        errorText.includes('Authentication Required') ||
+        errorText.includes('<!doctype html>') ||
+        errorText.includes('<title>Authentication Required</title>') ||
+        fullError.includes('Authentication Required') ||
+        fullError.includes('<!doctype html>') ||
+        fullError.includes('<title>Authentication Required</title>');
+      
+      if (hasHtmlError) {
+        console.error('Detected HTML authentication error in Resend response');
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Resend API authentication failed. Your RESEND_API_KEY is invalid, expired, or restricted.',
+            help: 'Please verify your RESEND_API_KEY in Vercel environment variables. Ensure the key has "Full access" permissions. Get a new key from https://resend.com/api-keys if needed.'
+          },
+          { status: 401 }
+        );
+      }
+      
+      // Re-throw if it's not an HTML error
+      throw resendException;
+    }
 
     if (error) {
       console.error('Resend batch API error:', error);
+      
+      // Check if error message contains HTML
+      const errorMessage = String(error.message || error);
+      if (errorMessage.includes('Authentication Required') || 
+          errorMessage.includes('<!doctype html>') ||
+          errorMessage.includes('<title>Authentication Required</title>')) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 'Resend API authentication failed. Your RESEND_API_KEY is invalid, expired, or restricted.',
+            help: 'Please verify your RESEND_API_KEY in Vercel environment variables. Ensure the key has "Full access" permissions. Get a new key from https://resend.com/api-keys if needed.'
+          },
+          { status: 401 }
+        );
+      }
+      
       return NextResponse.json(
         { 
           success: false,
