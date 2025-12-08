@@ -84,14 +84,39 @@ export async function POST(request: NextRequest) {
         // Otherwise, get all members in batch
         query = query.eq('batch', targetValue);
       }
+    } else if (targetType === 'batch-filter' && targetValue) {
+      // Filter by batch year ranges - handled below in the query execution section
+      // Set query to get all members with batch (we'll filter in memory)
+      query = query.not('batch', 'is', null);
     } else if (targetType === 'membership' && targetValue) {
       // Use pattern matching for membership types (GM-*, DM-*, FM-*, LM-*)
       query = query.like('membership_type', `${targetValue}-%`);
     }
 
-    const { data: members, error: membersError } = await query;
-
+    // Execute query and filter members
+    let members;
+    const { data: queryMembers, error: membersError } = await query;
     if (membersError) throw membersError;
+    
+    if (targetType === 'batch-filter' && targetValue) {
+      // Filter by batch year ranges in memory
+      members = (queryMembers || []).filter(m => {
+        if (!m.batch || m.batch.trim() === '') return false;
+        const batchNum = parseInt(m.batch);
+        if (isNaN(batchNum)) return false;
+        
+        if (targetValue === 'senior') {
+          return batchNum < 1999;
+        } else if (targetValue === 'junior') {
+          return batchNum > 1999;
+        } else if (targetValue === 'batchmate') {
+          return batchNum === 1999;
+        }
+        return false;
+      });
+    } else {
+      members = queryMembers;
+    }
 
     if (!members || members.length === 0) {
       return NextResponse.json(

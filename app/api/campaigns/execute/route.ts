@@ -60,12 +60,36 @@ export async function POST(request: NextRequest) {
       } else {
         query = query.eq('batch', targetValue);
       }
+    } else if (targetType === 'batch-filter' && targetValue) {
+      // Filter by batch year ranges - get all members with batch, filter in memory
+      query = query.not('batch', 'is', null);
     } else if (targetType === 'membership' && targetValue) {
       // Use pattern matching for membership types (GM-*, DM-*, FM-*, LM-*)
       query = query.like('membership_type', `${targetValue}-%`);
     }
 
-    const { data: members, error: membersError } = await query;
+    const { data: queryMembers, error: membersError } = await query;
+    
+    // Filter members if batch-filter type
+    let members;
+    if (targetType === 'batch-filter' && targetValue) {
+      members = (queryMembers || []).filter(m => {
+        if (!m.batch || m.batch.trim() === '') return false;
+        const batchNum = parseInt(m.batch);
+        if (isNaN(batchNum)) return false;
+        
+        if (targetValue === 'senior') {
+          return batchNum < 1999;
+        } else if (targetValue === 'junior') {
+          return batchNum > 1999;
+        } else if (targetValue === 'batchmate') {
+          return batchNum === 1999;
+        }
+        return false;
+      });
+    } else {
+      members = queryMembers;
+    }
 
     if (membersError) throw membersError;
 

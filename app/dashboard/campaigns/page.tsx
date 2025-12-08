@@ -26,7 +26,7 @@ export default function CampaignsPage() {
   const [scheduledAt, setScheduledAt] = useState('');
 
   // Target audience
-  const [targetType, setTargetType] = useState<'all' | 'batch' | 'membership' | 'select-members'>('all');
+  const [targetType, setTargetType] = useState<'all' | 'batch' | 'batch-filter' | 'membership' | 'select-members'>('all');
   const [targetValue, setTargetValue] = useState('');
   const [batches, setBatches] = useState<Array<{ batch: string | null; batchDisplay: string; count: number }>>([]);
   const [batchStats, setBatchStats] = useState<{ totalMembers: number; totalWithBatch: number; totalWithoutBatch: number } | null>(null);
@@ -564,6 +564,21 @@ export default function CampaignsPage() {
       } else {
         return batchMembers;
       }
+    } else if (targetType === 'batch-filter' && targetValue) {
+      return members.filter(m => {
+        if (!m.batch || m.batch.trim() === '') return false;
+        const batchNum = parseInt(m.batch);
+        if (isNaN(batchNum)) return false;
+        
+        if (targetValue === 'senior') {
+          return batchNum < 1999;
+        } else if (targetValue === 'junior') {
+          return batchNum > 1999;
+        } else if (targetValue === 'batchmate') {
+          return batchNum === 1999;
+        }
+        return false;
+      });
     } else if (targetType === 'membership' && targetValue) {
       return members.filter(m => {
         const membershipType = m.membership_type || '';
@@ -752,19 +767,22 @@ export default function CampaignsPage() {
                   >
                     <option value="all">All Members</option>
                     <option value="batch">Specific Batch</option>
+                    <option value="batch-filter">Batch Filter (Senior/Junior/Batchmate)</option>
                     <option value="membership">Membership Type</option>
                     <option value="select-members">Select Members</option>
                   </select>
                 </div>
               </div>
 
-              {(targetType === 'batch' || targetType === 'membership') && (
+              {(targetType === 'batch' || targetType === 'membership' || targetType === 'batch-filter') && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-medium text-gray-700">
-                      {targetType === 'batch' ? 'Select Batch' : 'Select Membership Type (Pattern)'}
+                      {targetType === 'batch' ? 'Select Batch' 
+                        : targetType === 'batch-filter' ? 'Select Batch Filter'
+                        : 'Select Membership Type (Pattern)'}
                     </label>
-                    {targetType === 'batch' && (
+                    {(targetType === 'batch' || targetType === 'batch-filter') && (
                       <button
                         onClick={fetchBatches}
                         className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition"
@@ -775,24 +793,49 @@ export default function CampaignsPage() {
                       </button>
                     )}
                   </div>
-                  <select
-                    value={targetValue}
-                    onChange={(e) => setTargetValue(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  >
-                    <option value="">Choose {targetType === 'batch' ? 'a batch' : 'a membership type (GM-*, DM-*, FM-*, LM-*)'}</option>
-                    {targetType === 'batch' 
-                      ? batches.map((b) => (
-                          <option key={b.batch || '(No Batch)'} value={b.batch || ''}>
-                            {b.batchDisplay} ({b.count} members)
-                          </option>
-                        ))
-                      : getMembershipTypes().map((type) => (
-                          <option key={type} value={type}>{type} ({type}-*)</option>
-                        ))
-                    }
-                  </select>
+                  {targetType === 'batch-filter' ? (
+                    <select
+                      value={targetValue}
+                      onChange={(e) => setTargetValue(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="">Choose a batch filter</option>
+                      <option value="senior">Senior (Batches before 1999)</option>
+                      <option value="junior">Junior (Batches after 1999)</option>
+                      <option value="batchmate">Batchmate (1999 batch)</option>
+                    </select>
+                  ) : (
+                    <select
+                      value={targetValue}
+                      onChange={(e) => setTargetValue(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="">Choose {targetType === 'batch' ? 'a batch' : 'a membership type (GM-*, DM-*, FM-*, LM-*)'}</option>
+                      {targetType === 'batch' 
+                        ? batches.map((b) => (
+                            <option key={b.batch || '(No Batch)'} value={b.batch || ''}>
+                              {b.batchDisplay} ({b.count} members)
+                            </option>
+                          ))
+                        : getMembershipTypes().map((type) => (
+                            <option key={type} value={type}>{type} ({type}-*)</option>
+                          ))
+                      }
+                    </select>
+                  )}
                   
+                  {targetType === 'batch-filter' && targetValue && (
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs">
+                      <p className="text-gray-700 mb-2">
+                        {targetValue === 'senior' && 'Members with batches before 1999 will be targeted.'}
+                        {targetValue === 'junior' && 'Members with batches after 1999 will be targeted.'}
+                        {targetValue === 'batchmate' && 'Members with batch 1999 will be targeted.'}
+                      </p>
+                      <p className="text-gray-600 text-xs">
+                        Note: Members without a batch value will be excluded from this filter.
+                      </p>
+                    </div>
+                  )}
                   {targetType === 'batch' && batchStats && (
                     <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs">
                       <div className="grid grid-cols-3 gap-2 text-center">
@@ -1315,7 +1358,7 @@ export default function CampaignsPage() {
 
               <button
                 onClick={handleSendCampaign}
-                disabled={loading || (!sendText && !sendVisual) || (sendText && !(useCustomContent ? customContent : generatedContent)?.trim()) || (sendVisual && !customVisualUrl && !generatedVisual) || (targetType === 'batch' && (!targetValue || selectedMemberIds.length === 0)) || (targetType === 'select-members' && selectedMemberIds.length === 0) || (targetType === 'membership' && !targetValue)}
+                disabled={loading || (!sendText && !sendVisual) || (sendText && !(useCustomContent ? customContent : generatedContent)?.trim()) || (sendVisual && !customVisualUrl && !generatedVisual) || (targetType === 'batch' && (!targetValue || selectedMemberIds.length === 0)) || (targetType === 'select-members' && selectedMemberIds.length === 0) || (targetType === 'membership' && !targetValue) || (targetType === 'batch-filter' && !targetValue)}
                 className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-blue-400 font-medium"
               >
                 <Send className="w-5 h-5" />
@@ -1436,6 +1479,8 @@ export default function CampaignsPage() {
                     ? 'All Members' 
                     : targetType === 'batch' 
                       ? `Batch: ${targetValue || 'Not selected'}${selectedMemberIds.length > 0 ? ` (${selectedMemberIds.length} selected)` : ''}` 
+                      : targetType === 'batch-filter'
+                      ? `Batch Filter: ${targetValue === 'senior' ? 'Senior (before 1999)' : targetValue === 'junior' ? 'Junior (after 1999)' : targetValue === 'batchmate' ? 'Batchmate (1999)' : 'Not selected'}`
                       : targetType === 'select-members'
                       ? `Selected Members: ${selectedMemberIds.length}`
                       : `Type: ${targetValue || 'Not selected'}`}
@@ -1635,6 +1680,9 @@ export default function CampaignsPage() {
                       <span className="text-gray-600">Target:</span>
                       {targetType === 'batch' && (
                         <span className="font-medium">Batch: {targetValue} ({selectedMemberIds.length} members)</span>
+                      )}
+                      {targetType === 'batch-filter' && (
+                        <span className="font-medium">Batch Filter: {targetValue === 'senior' ? 'Senior (before 1999)' : targetValue === 'junior' ? 'Junior (after 1999)' : 'Batchmate (1999)'} ({getTargetMembers().length} members)</span>
                       )}
                       {targetType === 'select-members' && (
                         <span className="font-medium">Selected Members: {selectedMemberIds.length}</span>

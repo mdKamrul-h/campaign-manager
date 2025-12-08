@@ -17,8 +17,9 @@ A comprehensive multi-channel campaign execution platform with AI-powered conten
   - WhatsApp
 - **Document Upload**: Upload reference documents to provide context for AI generation
 - **Campaign Customization**: Modify AI-generated content with suggestions
-- **Targeted Campaigns**: Send to all members, specific batches, or membership types
+- **Targeted Campaigns**: Send to all members, specific batches, batch filters (senior/junior/batchmate), or membership types
 - **Flexible Sending**: Choose to send text, visuals, or both
+- **Scheduled Campaigns**: Schedule campaigns to be sent automatically at specific date and time
 
 ## Tech Stack
 
@@ -300,7 +301,65 @@ Example DNS setup:
 5. Configure CORS properly for API endpoints
 6. Use HTTPS in production
 
+## Scheduled Campaigns
+
+The platform supports scheduling campaigns to be sent automatically at a specific date and time. 
+
+### How It Works
+
+1. When creating a campaign, set a scheduled date and time using the datetime picker
+2. The campaign will be saved with status "scheduled"
+3. A cron job runs every minute to check for scheduled campaigns that are ready to send
+4. When the scheduled time arrives, the campaign is automatically executed
+
+### Setting Up the Cron Job
+
+#### For Vercel Deployment
+
+The cron job is automatically configured in `vercel.json` to run every minute. No additional setup is required.
+
+#### For Other Platforms
+
+If deploying to a platform other than Vercel, you need to set up a cron job that calls:
+```
+GET /api/cron/execute-scheduled-campaigns
+```
+
+**Recommended schedule**: Every minute (`* * * * *`)
+
+**Optional Security**: Set the `CRON_SECRET` environment variable and include it as a Bearer token in the Authorization header:
+```
+Authorization: Bearer YOUR_CRON_SECRET
+```
+
+### Manual Execution
+
+You can also manually trigger the cron job by calling:
+```bash
+curl -X GET https://your-domain.com/api/cron/execute-scheduled-campaigns
+```
+
+## Batch Filtering
+
+The platform now supports filtering members by batch year ranges:
+
+- **Senior**: Members with batches before 1999 (batch < 1999)
+- **Junior**: Members with batches after 1999 (batch > 1999)
+- **Batchmate**: Members with batch 1999 (batch = 1999)
+
+When using batch filters, members without a batch value are automatically excluded.
+
 ## Troubleshooting
+
+### Scheduled Campaigns Not Sending
+
+1. **Check cron job is running**: Verify the cron job is configured and running
+   - For Vercel: Check the Cron Jobs section in your Vercel dashboard
+   - For other platforms: Verify your cron service is active
+2. **Check campaign status**: Ensure the campaign status is "scheduled" in the database
+3. **Verify scheduled time**: Check that `scheduled_at` is in the past
+4. **Check logs**: Review API logs for errors when the cron job executes
+5. **Manual trigger**: Try manually calling the cron endpoint to test
 
 ### OpenAI API Errors
 - Check if you have sufficient credits
