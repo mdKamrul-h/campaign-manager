@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Sparkles, Image as ImageIcon, Send, Upload, Edit3, Eye, RefreshCw, X, Info, ChevronLeft, ChevronRight, Check, Save } from 'lucide-react';
 import { Member } from '@/types';
 import { getAvailableVariables, replaceVariables } from '@/lib/variable-replacement';
 import { useMembers } from '@/contexts/MembersContext';
 
-export default function CampaignsPage() {
+function CampaignsPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const editCampaignId = searchParams.get('edit');
@@ -2065,5 +2065,20 @@ export default function CampaignsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CampaignsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading campaign editor...</p>
+        </div>
+      </div>
+    }>
+      <CampaignsPageContent />
+    </Suspense>
   );
 }
