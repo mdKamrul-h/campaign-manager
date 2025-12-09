@@ -122,8 +122,16 @@ export async function POST(request: NextRequest) {
           // If batch fails, try sending individually
           console.warn(`Batch chunk ${i / BATCH_SIZE + 1} failed, trying individual sends:`, error.message);
           
-          // Send each email individually
-          for (const email of chunk) {
+          // Send each email individually with rate limiting
+          // Resend allows 10 requests per second, so we use 150ms delay (safe margin)
+          for (let idx = 0; idx < chunk.length; idx++) {
+            const email = chunk[idx];
+            
+            // Add delay between individual sends (except first)
+            if (idx > 0) {
+              await new Promise(resolve => setTimeout(resolve, 150));
+            }
+            
             try {
               const { data: individualData, error: individualError } = await resend.emails.send({
                 from: email.from,
@@ -137,16 +145,91 @@ export async function POST(request: NextRequest) {
 
               if (individualError) {
                 const errorMsg = individualError.message || 'Unknown error';
-                const domain = email.originalTo.split('@')[1];
-                console.error(`Failed to send to ${email.originalTo} (domain: ${domain}):`, errorMsg);
-                console.error('Full error details:', JSON.stringify(individualError));
+                const errorString = String(errorMsg).toLowerCase();
                 
-                results.push({
-                  to: email.originalTo,
-                  success: false,
-                  error: errorMsg
-                });
-                failedEmails.push({ email, error: errorMsg });
+                // Check for rate limit errors (429, rate limit, too many requests)
+                const isRateLimit = errorString.includes('rate limit') || 
+                                   errorString.includes('too many requests') || 
+                                   errorString.includes('429') ||
+                                   (typeof individualError === 'object' && 'statusCode' in individualError && individualError.statusCode === 429);
+                
+                if (isRateLimit) {
+                  console.warn(`Rate limit detected for ${email.originalTo}. Waiting before retry...`);
+                  // Wait 1 second for Resend rate limits (10 req/s = 100ms, but we wait longer to be safe)
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                  
+                  // Retry once
+                  try {
+                    const { data: retryData, error: retryError } = await resend.emails.send({
+                      from: email.from,
+                      to: email.to[0],
+                      subject: email.subject,
+                      html: email.html,
+                      text: email.text,
+                      reply_to: email.reply_to,
+                      headers: email.headers,
+                    });
+                    
+                    if (retryError) {
+                      const retryErrorMsg = retryError.message || 'Unknown error';
+                      const retryErrorString = String(retryErrorMsg).toLowerCase();
+                      const stillRateLimited = retryErrorString.includes('rate limit') || 
+                                             retryErrorString.includes('too many requests') || 
+                                             retryErrorString.includes('429');
+                      
+                      if (stillRateLimited) {
+                        const domain = email.originalTo.split('@')[1];
+                        console.error(`Rate limit still active for ${email.originalTo} (domain: ${domain})`);
+                        results.push({
+                          to: email.originalTo,
+                          success: false,
+                          error: 'Rate limit exceeded. Please try again later or contact Resend support to increase rate limit.'
+                        });
+                        failedEmails.push({ email, error: 'Rate limit exceeded' });
+                      } else {
+                        // Other error on retry
+                        const domain = email.originalTo.split('@')[1];
+                        console.error(`Failed to send to ${email.originalTo} (domain: ${domain}) after retry:`, retryErrorMsg);
+                        results.push({
+                          to: email.originalTo,
+                          success: false,
+                          error: retryErrorMsg
+                        });
+                        failedEmails.push({ email, error: retryErrorMsg });
+                      }
+                    } else {
+                      // Retry succeeded
+                      const domain = email.originalTo.split('@')[1];
+                      console.log(`Successfully sent to ${email.originalTo} (domain: ${domain}) after rate limit retry, Resend ID: ${retryData?.id}`);
+                      results.push({
+                        to: email.originalTo,
+                        success: true,
+                        id: retryData?.id
+                      });
+                    }
+                  } catch (retryException: any) {
+                    const domain = email.originalTo.split('@')[1];
+                    console.error(`Retry exception for ${email.originalTo} (domain: ${domain}):`, retryException.message);
+                    results.push({
+                      to: email.originalTo,
+                      success: false,
+                      error: 'Rate limit exceeded and retry failed'
+                    });
+                    failedEmails.push({ email, error: 'Rate limit exceeded' });
+                  }
+                } else {
+                  // Not a rate limit error, handle normally
+                  const domain = email.originalTo.split('@')[1];
+                  console.error(`Failed to send to ${email.originalTo} (domain: ${domain}):`, errorMsg);
+                  console.error('Full error details:', JSON.stringify(individualError));
+                  
+                  results.push({
+                    to: email.originalTo,
+                    success: false,
+                    error: errorMsg
+                  });
+                  failedEmails.push({ email, error: errorMsg });
+                }
               } else {
                 const domain = email.originalTo.split('@')[1];
                 console.log(`Successfully sent to ${email.originalTo} (domain: ${domain}), Resend ID: ${individualData?.id}`);
@@ -190,15 +273,23 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // Small delay between chunks to avoid rate limiting
+        // Delay between chunks to avoid rate limiting
+        // Resend allows 10 requests/second, so 200ms delay between chunks is safe
         if (i + BATCH_SIZE < validEmails.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
       } catch (chunkError: any) {
         console.error(`Error processing chunk ${i / BATCH_SIZE + 1}:`, chunkError);
         
-        // Try sending individually if chunk fails
-        for (const email of chunk) {
+        // Try sending individually if chunk fails with rate limiting
+        for (let idx = 0; idx < chunk.length; idx++) {
+          const email = chunk[idx];
+          
+          // Add delay between individual sends (except first)
+          if (idx > 0) {
+            await new Promise(resolve => setTimeout(resolve, 150));
+          }
+          
           try {
             const { data: individualData, error: individualError } = await resend.emails.send({
               from: email.from,
@@ -212,16 +303,91 @@ export async function POST(request: NextRequest) {
 
             if (individualError) {
               const errorMsg = individualError.message || 'Unknown error';
-              const domain = email.originalTo.split('@')[1];
-              console.error(`Failed to send to ${email.originalTo} (domain: ${domain}):`, errorMsg);
-              console.error('Full error details:', JSON.stringify(individualError));
+              const errorString = String(errorMsg).toLowerCase();
               
-              results.push({
-                to: email.originalTo,
-                success: false,
-                error: errorMsg
-              });
-              failedEmails.push({ email, error: errorMsg });
+              // Check for rate limit errors (429, rate limit, too many requests)
+              const isRateLimit = errorString.includes('rate limit') || 
+                                 errorString.includes('too many requests') || 
+                                 errorString.includes('429') ||
+                                 (typeof individualError === 'object' && 'statusCode' in individualError && individualError.statusCode === 429);
+              
+              if (isRateLimit) {
+                console.warn(`Rate limit detected for ${email.originalTo}. Waiting before retry...`);
+                // Wait 1 second for Resend rate limits
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Retry once
+                try {
+                  const { data: retryData, error: retryError } = await resend.emails.send({
+                    from: email.from,
+                    to: email.to[0],
+                    subject: email.subject,
+                    html: email.html,
+                    text: email.text,
+                    reply_to: email.reply_to,
+                    headers: email.headers,
+                  });
+                  
+                  if (retryError) {
+                    const retryErrorMsg = retryError.message || 'Unknown error';
+                    const retryErrorString = String(retryErrorMsg).toLowerCase();
+                    const stillRateLimited = retryErrorString.includes('rate limit') || 
+                                           retryErrorString.includes('too many requests') || 
+                                           retryErrorString.includes('429');
+                    
+                    if (stillRateLimited) {
+                      const domain = email.originalTo.split('@')[1];
+                      console.error(`Rate limit still active for ${email.originalTo} (domain: ${domain})`);
+                      results.push({
+                        to: email.originalTo,
+                        success: false,
+                        error: 'Rate limit exceeded. Please try again later or contact Resend support to increase rate limit.'
+                      });
+                      failedEmails.push({ email, error: 'Rate limit exceeded' });
+                    } else {
+                      // Other error on retry
+                      const domain = email.originalTo.split('@')[1];
+                      console.error(`Failed to send to ${email.originalTo} (domain: ${domain}) after retry:`, retryErrorMsg);
+                      results.push({
+                        to: email.originalTo,
+                        success: false,
+                        error: retryErrorMsg
+                      });
+                      failedEmails.push({ email, error: retryErrorMsg });
+                    }
+                  } else {
+                    // Retry succeeded
+                    const domain = email.originalTo.split('@')[1];
+                    console.log(`Successfully sent to ${email.originalTo} (domain: ${domain}) after rate limit retry, Resend ID: ${retryData?.id}`);
+                    results.push({
+                      to: email.originalTo,
+                      success: true,
+                      id: retryData?.id
+                    });
+                  }
+                } catch (retryException: any) {
+                  const domain = email.originalTo.split('@')[1];
+                  console.error(`Retry exception for ${email.originalTo} (domain: ${domain}):`, retryException.message);
+                  results.push({
+                    to: email.originalTo,
+                    success: false,
+                    error: 'Rate limit exceeded and retry failed'
+                  });
+                  failedEmails.push({ email, error: 'Rate limit exceeded' });
+                }
+              } else {
+                // Not a rate limit error, handle normally
+                const domain = email.originalTo.split('@')[1];
+                console.error(`Failed to send to ${email.originalTo} (domain: ${domain}):`, errorMsg);
+                console.error('Full error details:', JSON.stringify(individualError));
+                
+                results.push({
+                  to: email.originalTo,
+                  success: false,
+                  error: errorMsg
+                });
+                failedEmails.push({ email, error: errorMsg });
+              }
             } else {
               const domain = email.originalTo.split('@')[1];
               console.log(`Successfully sent to ${email.originalTo} (domain: ${domain}), Resend ID: ${individualData?.id}`);
@@ -233,12 +399,59 @@ export async function POST(request: NextRequest) {
             }
           } catch (individualException: any) {
             const errorMsg = individualException.message || 'Failed to send email';
-            results.push({
-              to: email.originalTo,
-              success: false,
-              error: errorMsg
-            });
-            failedEmails.push({ email, error: errorMsg });
+            const errorString = String(errorMsg).toLowerCase();
+            
+            // Check if exception is due to rate limiting
+            const isRateLimit = errorString.includes('rate limit') || 
+                               errorString.includes('too many requests') || 
+                               errorString.includes('429');
+            
+            if (isRateLimit) {
+              console.warn(`Rate limit exception for ${email.originalTo}. Waiting before retry...`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              // Retry once
+              try {
+                const { data: retryData, error: retryError } = await resend.emails.send({
+                  from: email.from,
+                  to: email.to[0],
+                  subject: email.subject,
+                  html: email.html,
+                  text: email.text,
+                  reply_to: email.reply_to,
+                  headers: email.headers,
+                });
+                
+                if (retryError) {
+                  results.push({
+                    to: email.originalTo,
+                    success: false,
+                    error: 'Rate limit exceeded. Please try again later.'
+                  });
+                  failedEmails.push({ email, error: 'Rate limit exceeded' });
+                } else {
+                  results.push({
+                    to: email.originalTo,
+                    success: true,
+                    id: retryData?.id
+                  });
+                }
+              } catch (retryException: any) {
+                results.push({
+                  to: email.originalTo,
+                  success: false,
+                  error: 'Rate limit exceeded and retry failed'
+                });
+                failedEmails.push({ email, error: 'Rate limit exceeded' });
+              }
+            } else {
+              results.push({
+                to: email.originalTo,
+                success: false,
+                error: errorMsg
+              });
+              failedEmails.push({ email, error: errorMsg });
+            }
           }
         }
       }

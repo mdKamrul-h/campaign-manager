@@ -250,7 +250,17 @@ async function sendBulkSMS(
     const results = [];
     const errors = [];
 
-    for (const item of numbers) {
+    // Rate limit: 2 requests per second = 500ms delay between requests
+    const RATE_LIMIT_DELAY_MS = 500;
+
+    for (let i = 0; i < numbers.length; i++) {
+      const item = numbers[i];
+      
+      // Add delay before each request (except the first one)
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
+      }
+
       const phoneValidation = validatePhoneNumber(item.number);
       if (!phoneValidation.valid) {
         errors.push({
@@ -276,6 +286,59 @@ async function sendBulkSMS(
         });
 
         const responseText = await response.text();
+        
+        // Check for rate limit errors in response
+        if (responseText.includes('Too many requests') || responseText.includes('rate limit')) {
+          console.warn(`Rate limit detected for ${formattedNumber}. Waiting longer before retry...`);
+          // Wait longer if rate limited (2 seconds)
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Retry once
+          try {
+            const retryResponse = await fetch(apiUrl, {
+              method: 'GET',
+              headers: { 
+                'Accept': '*/*',
+                'User-Agent': 'CampaignManager/1.0'
+              },
+              signal: AbortSignal.timeout(30000),
+            });
+            const retryResponseText = await retryResponse.text();
+            
+            if (retryResponseText.includes('Too many requests') || retryResponseText.includes('rate limit')) {
+              errors.push({
+                number: formattedNumber,
+                error: 'Rate limit exceeded. Please try again later or contact support to increase rate limit.',
+                statusCode: 429
+              });
+              continue;
+            }
+            
+            // Process retry response
+            const retryStatusCode = parseInt(retryResponseText.trim());
+            if (!isNaN(retryStatusCode) && retryStatusCode === 202) {
+              results.push({
+                number: formattedNumber,
+                success: true,
+                statusCode: 202
+              });
+            } else {
+              errors.push({
+                number: formattedNumber,
+                error: ERROR_MESSAGES[retryStatusCode] || `Error ${retryStatusCode}`,
+                statusCode: retryStatusCode
+              });
+            }
+            continue;
+          } catch (retryErr: any) {
+            errors.push({
+              number: formattedNumber,
+              error: 'Rate limit exceeded and retry failed',
+              statusCode: 429
+            });
+            continue;
+          }
+        }
         
         // Check for HTML error page
         if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
