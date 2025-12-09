@@ -169,11 +169,12 @@ export async function POST(request: NextRequest) {
           }
         } else if (data) {
           // Batch succeeded - mark all as sent
+          // Resend batch API returns data but not individual IDs
           chunk.forEach((email, idx) => {
             results.push({
               to: email.originalTo,
               success: true,
-              id: data.id || `batch-${i + idx}`
+              id: `batch-${i + idx}-${Date.now()}`
             });
           });
         } else {
