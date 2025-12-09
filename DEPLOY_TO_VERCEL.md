@@ -175,3 +175,4 @@ vercel --prod
 1. Check `VERCEL_DEPLOYMENT_TROUBLESHOOTING.md` for detailed troubleshooting
 2. Check Vercel documentation: https://vercel.com/docs
 3. Check build logs in Vercel Dashboard
+

@@ -4,8 +4,9 @@ import { Resend } from 'resend';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 /**
- * Send batch emails using Resend batch API
- * Accepts an array of email objects
+ * Send batch emails with individual error handling
+ * Sends emails in chunks and continues even if some fail
+ * Returns detailed results for each email
  */
 export async function POST(request: NextRequest) {
   try {
@@ -30,127 +31,244 @@ export async function POST(request: NextRequest) {
     const fromEmail = process.env.FROM_EMAIL || 'Mallick NDC99 Ballot 7 <vote@mallicknazrul.com>';
     const replyTo = process.env.REPLY_TO_EMAIL || 'vote@mallicknazrul.com';
 
-    // Validate each email object
+    // Email validation regex (supports all valid email formats including custom domains)
+    // This regex accepts: user@domain.com, user@company.com, user@any-domain.any-tld
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // Validate and prepare emails
     const validatedEmails = emails.map((email: any, index: number) => {
       if (!email.to || !email.to.trim()) {
-        throw new Error(`Email at index ${index} is missing recipient address`);
-      }
-      if (!email.subject || !email.subject.trim()) {
-        throw new Error(`Email at index ${index} is missing subject`);
+        return { valid: false, index, error: 'Missing recipient address', email: null };
       }
       
-      // Preserve reply_to and headers from email object, or use defaults
+      const emailAddress = Array.isArray(email.to) ? email.to[0] : email.to.trim();
+      
+      // Validate email format (supports ALL domains including custom ones like @company.com)
+      // The regex checks for: local-part@domain.tld format
+      if (!emailRegex.test(emailAddress)) {
+        console.warn(`Invalid email format detected: ${emailAddress}`);
+        return { valid: false, index, error: `Invalid email format: ${emailAddress}`, email: null };
+      }
+      
+      // Log custom domain emails for debugging
+      const domain = emailAddress.split('@')[1];
+      const commonDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com'];
+      if (domain && !commonDomains.some(d => domain.toLowerCase().includes(d))) {
+        console.log(`Sending to custom domain: ${emailAddress} (domain: ${domain})`);
+      }
+      
+      if (!email.subject || !email.subject.trim()) {
+        return { valid: false, index, error: 'Missing subject', email: null };
+      }
+      
       const emailReplyTo = email.reply_to || replyTo;
       const emailHeaders = email.headers || {
-        'X-Priority': '1', // High priority (1 = High, 3 = Normal, 5 = Low)
+        'X-Priority': '1',
         'X-MSMail-Priority': 'High',
         'Importance': 'high',
-        // Avoid 'Precedence: bulk' as it signals marketing emails
-        // These headers help avoid promotions tab
         'X-Mailer': 'Campaign Manager',
       };
       
       return {
-        from: email.from || fromEmail,
-        to: Array.isArray(email.to) ? email.to : [email.to.trim()],
-        subject: email.subject.trim(),
-        html: email.html || email.text || '',
-        text: email.text || '',
-        reply_to: emailReplyTo,
-        headers: emailHeaders,
+        valid: true,
+        index,
+        error: null,
+        email: {
+          from: email.from || fromEmail,
+          to: Array.isArray(email.to) ? email.to : [email.to.trim()],
+          subject: email.subject.trim(),
+          html: email.html || email.text || '',
+          text: email.text || '',
+          reply_to: emailReplyTo,
+          headers: emailHeaders,
+          // Store original email address for tracking
+          originalTo: Array.isArray(email.to) ? email.to[0] : email.to.trim(),
+        }
       };
     });
 
-    let data, error;
-    try {
-      const result = await resend.batch.send(validatedEmails);
-      data = result.data;
-      error = result.error;
-    } catch (resendException: any) {
-      console.error('Resend batch send exception:', resendException);
-      console.error('Exception type:', typeof resendException);
-      console.error('Exception keys:', Object.keys(resendException || {}));
-      
-      // Check all possible fields where HTML might be
-      const errorString = String(resendException.message || resendException);
-      const errorResponse = resendException.response || resendException.data || resendException.body || resendException.text;
-      const errorText = errorResponse ? String(errorResponse) : '';
-      const fullError = JSON.stringify(resendException, null, 2);
-      
-      // Check for HTML authentication errors in any field
-      const hasHtmlError = 
-        errorString.includes('Authentication Required') || 
-        errorString.includes('<!doctype html>') ||
-        errorString.includes('<title>Authentication Required</title>') ||
-        errorText.includes('Authentication Required') ||
-        errorText.includes('<!doctype html>') ||
-        errorText.includes('<title>Authentication Required</title>') ||
-        fullError.includes('Authentication Required') ||
-        fullError.includes('<!doctype html>') ||
-        fullError.includes('<title>Authentication Required</title>');
-      
-      if (hasHtmlError) {
-        console.error('Detected HTML authentication error in Resend response');
-        return NextResponse.json(
-          { 
-            success: false,
-            error: 'Resend API authentication failed. Your RESEND_API_KEY is invalid, expired, or restricted.',
-            help: 'Please verify your RESEND_API_KEY in Vercel environment variables. Ensure the key has "Full access" permissions. Get a new key from https://resend.com/api-keys if needed.'
-          },
-          { status: 401 }
-        );
-      }
-      
-      // Re-throw if it's not an HTML error
-      throw resendException;
-    }
+    // Separate valid and invalid emails
+    const validEmails = validatedEmails.filter(e => e.valid).map(e => e.email!);
+    const invalidEmails = validatedEmails.filter(e => !e.valid);
 
-    if (error) {
-      console.error('Resend batch API error:', error);
-      
-      // Check if error message contains HTML
-      const errorMessage = String(error.message || error);
-      if (errorMessage.includes('Authentication Required') || 
-          errorMessage.includes('<!doctype html>') ||
-          errorMessage.includes('<title>Authentication Required</title>')) {
-        return NextResponse.json(
-          { 
-            success: false,
-            error: 'Resend API authentication failed. Your RESEND_API_KEY is invalid, expired, or restricted.',
-            help: 'Please verify your RESEND_API_KEY in Vercel environment variables. Ensure the key has "Full access" permissions. Get a new key from https://resend.com/api-keys if needed.'
-          },
-          { status: 401 }
-        );
-      }
-      
-      return NextResponse.json(
-        { 
+    if (validEmails.length === 0) {
+      return NextResponse.json({
+        success: false,
+        sent: 0,
+        failed: emails.length,
+        skipped: invalidEmails.length,
+        results: invalidEmails.map(e => ({
+          to: emails[e.index]?.to || 'unknown',
           success: false,
-          error: error.message || 'Resend API error',
-          details: JSON.stringify(error)
-        },
-        { status: 500 }
-      );
+          error: e.error
+        }))
+      });
     }
 
-    if (!data) {
-      console.error('Resend API returned no data');
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Email service returned invalid response (no data)'
-        },
-        { status: 500 }
-      );
+    // Resend batch API can handle up to 100 emails per batch
+    // For 800 emails, we'll split into chunks of 100
+    const BATCH_SIZE = 100;
+    const results: Array<{ to: string; success: boolean; id?: string; error?: string }> = [];
+    const failedEmails: Array<{ email: any; error: string }> = [];
+
+    // Process emails in chunks
+    for (let i = 0; i < validEmails.length; i += BATCH_SIZE) {
+      const chunk = validEmails.slice(i, i + BATCH_SIZE);
+      
+      try {
+        const { data, error } = await resend.batch.send(chunk);
+
+        if (error) {
+          // If batch fails, try sending individually
+          console.warn(`Batch chunk ${i / BATCH_SIZE + 1} failed, trying individual sends:`, error.message);
+          
+          // Send each email individually
+          for (const email of chunk) {
+            try {
+              const { data: individualData, error: individualError } = await resend.emails.send({
+                from: email.from,
+                to: email.to[0],
+                subject: email.subject,
+                html: email.html,
+                text: email.text,
+                reply_to: email.reply_to,
+                headers: email.headers,
+              });
+
+              if (individualError) {
+                const errorMsg = individualError.message || 'Unknown error';
+                const domain = email.originalTo.split('@')[1];
+                console.error(`Failed to send to ${email.originalTo} (domain: ${domain}):`, errorMsg);
+                console.error('Full error details:', JSON.stringify(individualError));
+                
+                results.push({
+                  to: email.originalTo,
+                  success: false,
+                  error: errorMsg
+                });
+                failedEmails.push({ email, error: errorMsg });
+              } else {
+                const domain = email.originalTo.split('@')[1];
+                console.log(`Successfully sent to ${email.originalTo} (domain: ${domain}), Resend ID: ${individualData?.id}`);
+                results.push({
+                  to: email.originalTo,
+                  success: true,
+                  id: individualData?.id
+                });
+              }
+            } catch (individualException: any) {
+              const errorMsg = individualException.message || 'Failed to send email';
+              results.push({
+                to: email.originalTo,
+                success: false,
+                error: errorMsg
+              });
+              failedEmails.push({ email, error: errorMsg });
+              console.error(`Exception sending to ${email.originalTo}:`, errorMsg);
+            }
+          }
+        } else if (data) {
+          // Batch succeeded - mark all as sent
+          chunk.forEach((email, idx) => {
+            results.push({
+              to: email.originalTo,
+              success: true,
+              id: data.id || `batch-${i + idx}`
+            });
+          });
+        } else {
+          // No data returned - mark all as failed
+          chunk.forEach((email) => {
+            const errorMsg = 'No response from email service';
+            results.push({
+              to: email.originalTo,
+              success: false,
+              error: errorMsg
+            });
+            failedEmails.push({ email, error: errorMsg });
+          });
+        }
+
+        // Small delay between chunks to avoid rate limiting
+        if (i + BATCH_SIZE < validEmails.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      } catch (chunkError: any) {
+        console.error(`Error processing chunk ${i / BATCH_SIZE + 1}:`, chunkError);
+        
+        // Try sending individually if chunk fails
+        for (const email of chunk) {
+          try {
+            const { data: individualData, error: individualError } = await resend.emails.send({
+              from: email.from,
+              to: email.to[0],
+              subject: email.subject,
+              html: email.html,
+              text: email.text,
+              reply_to: email.reply_to,
+              headers: email.headers,
+            });
+
+            if (individualError) {
+              const errorMsg = individualError.message || 'Unknown error';
+              const domain = email.originalTo.split('@')[1];
+              console.error(`Failed to send to ${email.originalTo} (domain: ${domain}):`, errorMsg);
+              console.error('Full error details:', JSON.stringify(individualError));
+              
+              results.push({
+                to: email.originalTo,
+                success: false,
+                error: errorMsg
+              });
+              failedEmails.push({ email, error: errorMsg });
+            } else {
+              const domain = email.originalTo.split('@')[1];
+              console.log(`Successfully sent to ${email.originalTo} (domain: ${domain}), Resend ID: ${individualData?.id}`);
+              results.push({
+                to: email.originalTo,
+                success: true,
+                id: individualData?.id
+              });
+            }
+          } catch (individualException: any) {
+            const errorMsg = individualException.message || 'Failed to send email';
+            results.push({
+              to: email.originalTo,
+              success: false,
+              error: errorMsg
+            });
+            failedEmails.push({ email, error: errorMsg });
+          }
+        }
+      }
     }
 
-    // Use validatedEmails.length since data is not an array
-    const emailCount = validatedEmails.length;
-    console.log(`Batch email sent successfully. ${emailCount} emails processed`);
-    return NextResponse.json({ 
-      success: true, 
-      count: emailCount,
-      data: data || validatedEmails.map((_, i) => ({ id: `batch-${i}` }))
+    // Add invalid emails to results
+    invalidEmails.forEach(e => {
+      results.push({
+        to: emails[e.index]?.to || 'unknown',
+        success: false,
+        error: e.error || 'Invalid email'
+      });
+    });
+
+    const sentCount = results.filter(r => r.success).length;
+    const failedCount = results.filter(r => !r.success).length;
+
+    console.log(`Batch email processing complete: ${sentCount} sent, ${failedCount} failed out of ${emails.length} total`);
+
+    // Always return success if at least one email was sent
+    return NextResponse.json({
+      success: sentCount > 0,
+      sent: sentCount,
+      failed: failedCount,
+      skipped: invalidEmails.length,
+      total: emails.length,
+      results: results,
+      failedDetails: failedEmails.length > 0 ? failedEmails.map(f => ({
+        to: f.email.originalTo,
+        error: f.error
+      })) : undefined
     });
   } catch (error: any) {
     console.error('Batch email send error:', error);

@@ -29,3 +29,4 @@ CREATE TRIGGER update_campaign_templates_updated_at
     BEFORE UPDATE ON campaign_templates
     FOR EACH ROW
     EXECUTE FUNCTION update_campaign_templates_updated_at();
+

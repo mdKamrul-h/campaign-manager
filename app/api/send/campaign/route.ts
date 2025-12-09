@@ -241,10 +241,27 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (batchResponse.ok && batchResult.success) {
-          // Log all emails as sent
-          const emailMembers = members.filter(m => m.email && m.email.trim());
-          const sendPromises = emailMembers.map(async (member) => {
+        // Process results - handle partial successes
+        const emailMembers = members.filter(m => m.email && m.email.trim());
+        const emailResults = batchResult.results || [];
+        
+        // Create a map of email -> result for quick lookup
+        const resultMap = new Map<string, { success: boolean; error?: string }>();
+        emailResults.forEach((result: any) => {
+          if (result.to) {
+            resultMap.set(result.to.toLowerCase().trim(), {
+              success: result.success || false,
+              error: result.error
+            });
+          }
+        });
+
+        // Log each email send attempt individually
+        const logPromises = emailMembers.map(async (member) => {
+          const emailLower = member.email.toLowerCase().trim();
+          const result = resultMap.get(emailLower);
+          
+          if (result && result.success) {
             await supabaseAdmin
               .from('campaign_logs')
               .insert([{
@@ -254,34 +271,9 @@ export async function POST(request: NextRequest) {
                 status: 'success',
                 error_message: null,
               }]);
-            return { success: true, member: member.name };
-          });
-
-          const results = await Promise.all(sendPromises);
-
-          // Handle non-email members (those without email addresses)
-          const nonEmailMembers = members.filter(m => !m.email || !m.email.trim());
-          const nonEmailResults = nonEmailMembers.map((member) => {
-            return { success: false, member: member.name, error: 'Email address is missing' };
-          });
-
-          const allResults = [...results, ...nonEmailResults];
-          const successCount = results.length;
-
-          return NextResponse.json({
-            success: true,
-            campaign_id: campaign.id,
-            total: members.length,
-            sent: successCount,
-            failed: nonEmailMembers.length,
-            results: allResults,
-            warning: nonEmailMembers.length > 0 
-              ? `${nonEmailMembers.length} members skipped (no email address)`
-              : undefined
-          });
-        } else {
-          // Batch send failed - log all as failed
-          const sendPromises = members.map(async (member) => {
+            return { success: true, member: member.name, email: member.email };
+          } else {
+            const errorMsg = result?.error || 'Email send failed';
             await supabaseAdmin
               .from('campaign_logs')
               .insert([{
@@ -289,23 +281,39 @@ export async function POST(request: NextRequest) {
                 member_id: member.id,
                 channel,
                 status: 'failed',
-                error_message: batchResult.error || 'Batch email send failed',
+                error_message: errorMsg,
               }]);
-            return { success: false, member: member.name, error: batchResult.error || 'Batch email send failed' };
-          });
+            return { success: false, member: member.name, email: member.email, error: errorMsg };
+          }
+        });
 
-          const results = await Promise.all(sendPromises);
+        const loggedResults = await Promise.all(logPromises);
 
-          return NextResponse.json({
-            success: false,
-            campaign_id: campaign.id,
-            total: members.length,
-            sent: 0,
-            failed: members.length,
-            results,
-            error: batchResult.error || 'Failed to send batch emails'
-          });
-        }
+        // Handle non-email members
+        const nonEmailMembers = members.filter(m => !m.email || !m.email.trim());
+        const nonEmailResults = nonEmailMembers.map((member) => {
+          return { success: false, member: member.name, error: 'Email address is missing' };
+        });
+
+        const allResults = [...loggedResults, ...nonEmailResults];
+        const successCount = loggedResults.filter(r => r.success).length;
+        const failedCount = loggedResults.filter(r => !r.success).length + nonEmailMembers.length;
+
+        // Return success if at least one email was sent
+        return NextResponse.json({
+          success: successCount > 0,
+          campaign_id: campaign.id,
+          total: members.length,
+          sent: successCount,
+          failed: failedCount,
+          skipped: nonEmailMembers.length,
+          results: allResults,
+          warning: failedCount > 0 
+            ? `${failedCount} email(s) failed to send. Check results for details.`
+            : nonEmailMembers.length > 0 
+            ? `${nonEmailMembers.length} members skipped (no email address)`
+            : undefined
+        });
       } catch (batchError: any) {
         console.error('Batch email error:', batchError);
         return NextResponse.json(

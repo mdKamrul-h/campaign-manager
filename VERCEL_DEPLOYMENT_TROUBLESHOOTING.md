@@ -218,3 +218,4 @@ npx tsc --noEmit
 - **NEXTAUTH_URL:** Must be set to your Vercel deployment URL (e.g., `https://your-app.vercel.app`)
 - **Database:** Make sure Supabase project is active (not paused)
 - **Cron Jobs:** Only work on Vercel Pro plan, use external service for Hobby plan
+
