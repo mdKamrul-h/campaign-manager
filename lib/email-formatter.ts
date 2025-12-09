@@ -93,7 +93,7 @@ function getEmailSignature(): string {
   return `
     <div class="email-signature" style="margin-top: 40px; padding-top: 30px; border-top: 2px solid #e5e7eb;">
       <p style="margin: 8px 0; font-size: 14px; color: #333333;">Thank You</p>
-      <p style="margin: 8px 0; font-size: 14px; color: #333333; font-weight: 600;">Campaign Team</p>
+      //<p style="margin: 8px 0; font-size: 14px; color: #333333; font-weight: 600;">Campaign Team</p>
       <p style="margin: 8px 0; font-size: 14px; color: #333333;">Engr. Md Mallick Nazrul Islam</p>
       <p style="margin: 8px 0; font-size: 14px; color: #333333;">NDC1999, LM 0202</p>
       <p style="margin: 8px 0; font-size: 14px; color: #333333;">EC Member Candidate</p>
