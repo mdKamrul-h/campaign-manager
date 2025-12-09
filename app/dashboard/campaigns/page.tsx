@@ -57,6 +57,7 @@ function CampaignsPageContent() {
   const [templates, setTemplates] = useState<Array<{ id: string; name: string; title: string; content: string; channel: string; visual_url?: string }>>([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [saveTemplateWithVisual, setSaveTemplateWithVisual] = useState(false);
   const [templateName, setTemplateName] = useState('');
 
   // Filter members for selection - defined before useEffects
@@ -279,11 +280,17 @@ function CampaignsPageContent() {
     }
   };
 
-  const saveAsTemplate = async () => {
+  const saveAsTemplate = async (includeVisual: boolean = false) => {
     const finalContent = useCustomContent ? customContent : generatedContent;
     if (!templateName || !finalContent?.trim()) {
       alert('Please provide a template name and content');
       return;
+    }
+
+    // If including visual but no visual exists, warn user
+    if (includeVisual && !customVisualUrl && !generatedVisual) {
+      alert('No visual content available. Saving template with content only.');
+      includeVisual = false;
     }
 
     setLoading(true);
@@ -296,13 +303,16 @@ function CampaignsPageContent() {
           title: title || '',
           content: finalContent,
           channel,
-          visual_url: customVisualUrl || generatedVisual || null,
+          visual_url: includeVisual ? (customVisualUrl || generatedVisual || null) : null,
         }),
       });
 
       if (response.ok) {
-        alert('Template saved successfully!');
+        alert(includeVisual 
+          ? 'Template saved successfully with content and visual!'
+          : 'Template saved successfully with content!');
         setShowSaveTemplate(false);
+        setSaveTemplateWithVisual(false);
         setTemplateName('');
         await fetchTemplates();
       } else {
@@ -1311,14 +1321,33 @@ function CampaignsPageContent() {
                     </label>
                     <div className="flex items-center gap-2">
                       {customContent && (
-                        <button
-                          onClick={() => setShowSaveTemplate(true)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition"
-                          title="Save as template"
-                        >
-                          <Save className="w-3 h-3" />
-                          Save Template
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setSaveTemplateWithVisual(false);
+                              setShowSaveTemplate(true);
+                            }}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition"
+                            title="Save content as template"
+                          >
+                            <Save className="w-3 h-3" />
+                            Save Template
+                          </button>
+                          {(customVisualUrl || generatedVisual) && (
+                            <button
+                              onClick={() => {
+                                setSaveTemplateWithVisual(true);
+                                setShowSaveTemplate(true);
+                              }}
+                              className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition"
+                              title="Save content and visual as template"
+                            >
+                              <Save className="w-3 h-3" />
+                              <ImageIcon className="w-3 h-3" />
+                              Save with Visual
+                            </button>
+                          )}
+                        </div>
                       )}
                       <div className="relative group">
                         <button
@@ -1380,14 +1409,33 @@ function CampaignsPageContent() {
                       {channel === 'sms' && generatedContent.length > 160 && (
                         <span className="text-xs text-amber-600">⚠️ Long SMS</span>
                       )}
-                      <button
-                        onClick={() => setShowSaveTemplate(true)}
-                        className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition"
-                        title="Save as template"
-                      >
-                        <Save className="w-3 h-3" />
-                        Save Template
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setSaveTemplateWithVisual(false);
+                            setShowSaveTemplate(true);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition"
+                          title="Save content as template"
+                        >
+                          <Save className="w-3 h-3" />
+                          Save Template
+                        </button>
+                        {(customVisualUrl || generatedVisual) && (
+                          <button
+                            onClick={() => {
+                              setSaveTemplateWithVisual(true);
+                              setShowSaveTemplate(true);
+                            }}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition"
+                            title="Save content and visual as template"
+                          >
+                            <Save className="w-3 h-3" />
+                            <ImageIcon className="w-3 h-3" />
+                            Save with Visual
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <textarea
@@ -1441,7 +1489,12 @@ function CampaignsPageContent() {
                           .map((template) => (
                             <div key={template.id} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200 hover:bg-gray-50">
                               <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900 truncate">{template.name}</div>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-sm font-medium text-gray-900 truncate">{template.name}</div>
+                                  {template.visual_url && (
+                                    <ImageIcon className="w-3 h-3 text-purple-600" title="Template includes visual" />
+                                  )}
+                                </div>
                                 <div className="text-xs text-gray-500 truncate">{template.title || 'No title'}</div>
                                 <div className="text-xs text-gray-400 capitalize">{template.channel}</div>
                               </div>
@@ -1515,29 +1568,47 @@ function CampaignsPageContent() {
               </div>
 
               {(generatedVisual || customVisualUrl) && (
-                <div className="mt-4 relative">
-                  <img
-                    src={customVisualUrl || generatedVisual}
-                    alt="Visual"
-                    className="w-full max-w-md rounded-lg border border-gray-300"
-                  />
-                  {customVisualUrl && (
-                    <button
-                      onClick={handleRemoveCustomVisual}
-                      className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-2 hover:bg-red-700 transition shadow-lg"
-                      title="Remove image"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                  {generatedVisual && !customVisualUrl && (
-                    <button
-                      onClick={() => setGeneratedVisual('')}
-                      className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-2 hover:bg-red-700 transition shadow-lg"
-                      title="Remove generated image"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                <div className="mt-4 space-y-2">
+                  <div className="relative">
+                    <img
+                      src={customVisualUrl || generatedVisual}
+                      alt="Visual"
+                      className="w-full max-w-md rounded-lg border border-gray-300"
+                    />
+                    {customVisualUrl && (
+                      <button
+                        onClick={handleRemoveCustomVisual}
+                        className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-2 hover:bg-red-700 transition shadow-lg"
+                        title="Remove image"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                    {generatedVisual && !customVisualUrl && (
+                      <button
+                        onClick={() => setGeneratedVisual('')}
+                        className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-2 hover:bg-red-700 transition shadow-lg"
+                        title="Remove generated image"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  {(generatedContent || customContent) && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setSaveTemplateWithVisual(true);
+                          setShowSaveTemplate(true);
+                        }}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition"
+                        title="Save content and visual as template"
+                      >
+                        <Save className="w-3 h-3" />
+                        <ImageIcon className="w-3 h-3" />
+                        Save Template with Visual
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -1894,7 +1965,9 @@ function CampaignsPageContent() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Save as Template</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                {saveTemplateWithVisual ? 'Save Template with Visual' : 'Save Template'}
+              </h2>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1908,15 +1981,40 @@ function CampaignsPageContent() {
                     placeholder="e.g., Welcome Email Template"
                   />
                 </div>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
-                  <p>This will save your current content and visual as a reusable template.</p>
-                  <p className="mt-1">Channel: <strong>{channel}</strong></p>
+                <div className={`border rounded-lg p-3 text-xs ${saveTemplateWithVisual ? 'bg-purple-50 border-purple-200 text-purple-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                  {saveTemplateWithVisual ? (
+                    <>
+                      <p>This will save your current <strong>content and visual</strong> as a reusable template.</p>
+                      <p className="mt-1">Channel: <strong>{channel}</strong></p>
+                      {(customVisualUrl || generatedVisual) ? (
+                        <div className="mt-2 pt-2 border-t border-purple-300">
+                          <p className="font-medium">Visual included:</p>
+                          <img 
+                            src={customVisualUrl || generatedVisual} 
+                            alt="Template visual" 
+                            className="mt-1 w-full max-w-xs rounded border border-purple-300"
+                          />
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-amber-700">⚠️ No visual available. Template will be saved with content only.</p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p>This will save your current <strong>content only</strong> as a reusable template.</p>
+                      <p className="mt-1">Channel: <strong>{channel}</strong></p>
+                      {(customVisualUrl || generatedVisual) && (
+                        <p className="mt-1 text-gray-600">💡 Tip: Use "Save with Visual" button to include the visual in the template.</p>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => {
                     setShowSaveTemplate(false);
+                    setSaveTemplateWithVisual(false);
                     setTemplateName('');
                   }}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
@@ -1924,11 +2022,15 @@ function CampaignsPageContent() {
                   Cancel
                 </button>
                 <button
-                  onClick={saveAsTemplate}
+                  onClick={() => saveAsTemplate(saveTemplateWithVisual)}
                   disabled={loading || !templateName}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:bg-green-400 font-medium"
+                  className={`flex-1 px-4 py-2 rounded-lg transition font-medium ${
+                    saveTemplateWithVisual 
+                      ? 'bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400' 
+                      : 'bg-green-600 hover:bg-green-700 disabled:bg-green-400'
+                  } text-white`}
                 >
-                  {loading ? 'Saving...' : 'Save Template'}
+                  {loading ? 'Saving...' : saveTemplateWithVisual ? 'Save Template with Visual' : 'Save Template'}
                 </button>
               </div>
             </div>
