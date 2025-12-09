@@ -1492,7 +1492,9 @@ function CampaignsPageContent() {
                                 <div className="flex items-center gap-2">
                                   <div className="text-sm font-medium text-gray-900 truncate">{template.name}</div>
                                   {template.visual_url && (
-                                    <ImageIcon className="w-3 h-3 text-purple-600" title="Template includes visual" />
+                                    <span title="Template includes visual">
+                                      <ImageIcon className="w-3 h-3 text-purple-600" />
+                                    </span>
                                   )}
                                 </div>
                                 <div className="text-xs text-gray-500 truncate">{template.title || 'No title'}</div>
