@@ -182,22 +182,53 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse response (API returns status code as text/number)
-    const statusCode = parseInt(trimmedResponse);
+    // Try to parse as JSON first (some errors return JSON)
+    let statusCode: number;
+    let jsonResponse: any = null;
     
-    // Check if status code is valid number
-    if (isNaN(statusCode)) {
-      console.error('Invalid response from BulkSMSBD API. Expected number, got:', trimmedResponse);
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Invalid API response format. Expected status code (number), but received: ${trimmedResponse.substring(0, 200)}`,
-          statusCode: 0,
-          to: formattedNumber,
-          rawResponse: trimmedResponse.substring(0, 500)
-        },
-        { status: 500 }
-      );
+    try {
+      jsonResponse = JSON.parse(trimmedResponse);
+      if (jsonResponse.response_code) {
+        statusCode = jsonResponse.response_code;
+        // Handle IP whitelist error specifically
+        if (statusCode === 1032) {
+          const ipAddress = jsonResponse.error_message?.match(/\d+\.\d+\.\d+\.\d+/)?.[0] || 'unknown';
+          return NextResponse.json(
+            {
+              success: false,
+              error: `IP Not Whitelisted (Error 1032)`,
+              statusCode: 1032,
+              to: formattedNumber,
+              details: jsonResponse.error_message || 'Your IP address is not whitelisted in BulkSMSBD',
+              ipAddress: ipAddress,
+              help: `Your IP address (${ipAddress}) needs to be whitelisted in BulkSMSBD dashboard. However, since you're using Vercel, your IP changes with each deployment. Contact BulkSMSBD support to whitelist Vercel's IP ranges or use a different approach.`
+            },
+            { status: 403 }
+          );
+        }
+      }
+    } catch (e) {
+      // Not JSON, continue with number parsing
+    }
+
+    // Parse response as number (API usually returns status code as text/number)
+    if (!jsonResponse) {
+      statusCode = parseInt(trimmedResponse);
+      
+      // Check if status code is valid number
+      if (isNaN(statusCode)) {
+        console.error('Invalid response from BulkSMSBD API. Expected number or JSON, got:', trimmedResponse);
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Invalid API response format. Expected status code (number) or JSON, but received: ${trimmedResponse.substring(0, 200)}`,
+            statusCode: 0,
+            to: formattedNumber,
+            rawResponse: trimmedResponse.substring(0, 500)
+          },
+          { status: 500 }
+        );
+      }
     }
 
     if (statusCode === 202) {
@@ -352,15 +383,41 @@ async function sendBulkSMS(
           continue;
         }
         
-        const statusCode = parseInt(responseText.trim());
+        // Try to parse as JSON first
+        let statusCode: number;
+        let jsonResponse: any = null;
         
-        if (isNaN(statusCode)) {
-          errors.push({
-            number: formattedNumber,
-            error: `Invalid API response: ${responseText.substring(0, 100)}`,
-            statusCode: 0
-          });
-          continue;
+        try {
+          jsonResponse = JSON.parse(responseText.trim());
+          if (jsonResponse.response_code) {
+            statusCode = jsonResponse.response_code;
+            // Handle IP whitelist error specifically
+            if (statusCode === 1032) {
+              const ipAddress = jsonResponse.error_message?.match(/\d+\.\d+\.\d+\.\d+/)?.[0] || 'unknown';
+              errors.push({
+                number: formattedNumber,
+                error: `IP Not Whitelisted (${ipAddress}). Contact BulkSMSBD support to whitelist Vercel IP ranges.`,
+                statusCode: 1032
+              });
+              continue;
+            }
+          }
+        } catch (e) {
+          // Not JSON, continue with number parsing
+        }
+        
+        // Parse as number if not JSON
+        if (!jsonResponse) {
+          statusCode = parseInt(responseText.trim());
+          
+          if (isNaN(statusCode)) {
+            errors.push({
+              number: formattedNumber,
+              error: `Invalid API response: ${responseText.substring(0, 100)}`,
+              statusCode: 0
+            });
+            continue;
+          }
         }
 
         if (statusCode === 202) {
