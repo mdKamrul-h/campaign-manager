@@ -38,8 +38,11 @@ function CampaignsPageContent() {
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [showApproval, setShowApproval] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [showSMSPreview, setShowSMSPreview] = useState(false);
   const [currentEmailIndex, setCurrentEmailIndex] = useState(0);
+  const [currentSMSIndex, setCurrentSMSIndex] = useState(0);
   const [approvedEmails, setApprovedEmails] = useState<Set<string>>(new Set());
+  const [approvedSMS, setApprovedSMS] = useState<Set<string>>(new Set());
   const [modifiedEmails, setModifiedEmails] = useState<Map<string, { subject: string; content: string }>>(new Map());
   
   // Member selection state
@@ -511,6 +514,15 @@ function CampaignsPageContent() {
       }
     }
     
+    // Show SMS preview for SMS campaigns
+    if (channel === 'sms' && sendText) {
+      const targetMembers = getTargetMembers();
+      if (targetMembers.length > 0) {
+        setShowSMSPreview(true);
+        return;
+      }
+    }
+    
     // Show approval step if batch or select-members is selected with member selection
     if ((targetType === 'batch' && targetValue && selectedMemberIds.length > 0) ||
         (targetType === 'select-members' && selectedMemberIds.length > 0)) {
@@ -604,7 +616,11 @@ function CampaignsPageContent() {
           sendVisual,
           smsSenderId: channel === 'sms' ? smsSenderId : undefined,
           modifiedEmails: channel === 'email' ? Object.fromEntries(modifiedEmails) : undefined,
-          approvedMemberIds: channel === 'email' && approvedEmails.size > 0 ? Array.from(approvedEmails) : undefined,
+          approvedMemberIds: (channel === 'email' && approvedEmails.size > 0) 
+            ? Array.from(approvedEmails) 
+            : (channel === 'sms' && approvedSMS.size > 0) 
+              ? Array.from(approvedSMS) 
+              : undefined,
         }),
       });
 
@@ -633,6 +649,7 @@ function CampaignsPageContent() {
         }
         setShowApproval(false);
         setShowEmailPreview(false);
+        setShowSMSPreview(false);
       } else {
         // Show contextual error message based on channel
         const errorMessage = result.error || result.details || 'Unknown error';
@@ -656,6 +673,7 @@ function CampaignsPageContent() {
         alert(`Failed to send campaign: ${fullError}\n\n${helpMessage}`);
         setShowApproval(false);
         setShowEmailPreview(false);
+        setShowSMSPreview(false);
       }
     } catch (error: any) {
       console.error('Failed to send campaign:', error);
@@ -683,6 +701,7 @@ function CampaignsPageContent() {
       alert(`Failed to send campaign: ${errorMessage}\n\n${helpMessage}`);
       setShowApproval(false);
       setShowEmailPreview(false);
+      setShowSMSPreview(false);
     } finally {
       setLoading(false);
     }
@@ -876,6 +895,80 @@ function CampaignsPageContent() {
         }
       }
     }
+  };
+
+  // Get all preview SMS for all target members
+  const getAllPreviewSMS = () => {
+    if (channel !== 'sms' || !sendText) return [];
+    
+    const targetMembers = getTargetMembers();
+    if (targetMembers.length === 0) return [];
+    
+    const finalContent = getFinalContent();
+    
+    return targetMembers
+      .filter(member => member.mobile && member.mobile.trim())
+      .map((member) => {
+        const personalizedContent = replaceVariables(finalContent || '', member);
+        
+        return {
+          memberId: member.id,
+          to: member.mobile || 'No phone',
+          message: personalizedContent,
+          memberName: member.name,
+          messageLength: personalizedContent.length,
+          estimatedSMS: Math.ceil(personalizedContent.length / 160), // SMS are ~160 chars each
+        };
+      });
+  };
+
+  // Get current SMS being previewed
+  const getCurrentPreviewSMS = () => {
+    const smsList = getAllPreviewSMS();
+    if (smsList.length === 0) return null;
+    const index = Math.min(currentSMSIndex, smsList.length - 1);
+    return smsList[index];
+  };
+
+  // Navigate to next SMS
+  const goToNextSMS = () => {
+    const smsList = getAllPreviewSMS();
+    if (currentSMSIndex < smsList.length - 1) {
+      setCurrentSMSIndex(currentSMSIndex + 1);
+    }
+  };
+
+  // Navigate to previous SMS
+  const goToPreviousSMS = () => {
+    if (currentSMSIndex > 0) {
+      setCurrentSMSIndex(currentSMSIndex - 1);
+    }
+  };
+
+  // Approve current SMS
+  const approveCurrentSMS = () => {
+    const currentSMS = getCurrentPreviewSMS();
+    if (currentSMS) {
+      const newApprovedSMS = new Set(approvedSMS);
+      newApprovedSMS.add(currentSMS.memberId);
+      setApprovedSMS(newApprovedSMS);
+      // Auto-advance to next unapproved SMS
+      const smsList = getAllPreviewSMS();
+      const nextUnapprovedIndex = smsList.findIndex(
+        (sms, idx) => idx > currentSMSIndex && !newApprovedSMS.has(sms.memberId)
+      );
+      if (nextUnapprovedIndex !== -1) {
+        setCurrentSMSIndex(nextUnapprovedIndex);
+      } else if (currentSMSIndex < smsList.length - 1) {
+        goToNextSMS();
+      }
+    }
+  };
+
+  // Approve all SMS
+  const approveAllSMS = () => {
+    const smsList = getAllPreviewSMS();
+    setApprovedSMS(new Set(smsList.map(s => s.memberId)));
   };
 
   return (
@@ -1926,6 +2019,9 @@ function CampaignsPageContent() {
                       setCurrentEmailIndex(0);
                       setApprovedEmails(new Set());
                       setModifiedEmails(new Map());
+                      setShowSMSPreview(false);
+                      setCurrentSMSIndex(0);
+                      setApprovedSMS(new Set());
                     }}
                     className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
                   >
@@ -2046,6 +2142,151 @@ function CampaignsPageContent() {
           </div>
         </div>
       )}
+
+      {/* SMS Preview Modal */}
+      {showSMSPreview && (() => {
+        const allSMS = getAllPreviewSMS();
+        const currentSMS = getCurrentPreviewSMS();
+        const totalSMS = allSMS.length;
+        const approvedCount = approvedSMS.size;
+        const isCurrentApproved = currentSMS ? approvedSMS.has(currentSMS.memberId) : false;
+
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-bold text-gray-900">SMS Preview & Approval</h2>
+                  <div className="text-sm text-gray-600">
+                    {approvedCount} of {totalSMS} approved
+                  </div>
+                </div>
+                
+                {currentSMS && totalSMS > 0 && (
+                  <div className="space-y-4 mb-6">
+                    {/* Navigation Header */}
+                    <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                      <button
+                        onClick={goToPreviousSMS}
+                        disabled={currentSMSIndex === 0}
+                        className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                        Previous
+                      </button>
+                      
+                      <div className="text-center">
+                        <div className="text-sm font-medium text-gray-900">
+                          SMS {currentSMSIndex + 1} of {totalSMS}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {currentSMS.memberName} {isCurrentApproved && <span className="text-green-600">✓ Approved</span>}
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={goToNextSMS}
+                        disabled={currentSMSIndex >= totalSMS - 1}
+                        className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* SMS Content */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                      <p>This is the actual SMS that will be sent to <strong>{currentSMS.memberName}</strong> ({currentSMS.to}).</p>
+                      <p className="mt-1">Variables have been replaced with actual member data.</p>
+                    </div>
+                    
+                    <div className="border border-gray-200 rounded-lg p-4 bg-white">
+                      <div className="mb-3 pb-3 border-b">
+                        <div className="text-xs text-gray-500 mb-1">To:</div>
+                        <div className="text-sm font-medium text-gray-900">{currentSMS.to}</div>
+                        <div className="text-xs text-gray-500 mt-2 mb-1">Message Length:</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {currentSMS.messageLength} characters ({currentSMS.estimatedSMS} SMS)
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 mb-2">Message:</div>
+                      <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-4 rounded border border-gray-100 max-h-96 overflow-y-auto font-mono">
+                        {currentSMS.message}
+                      </div>
+                      {currentSMS.messageLength > 160 && (
+                        <div className="mt-3 pt-3 border-t text-xs text-amber-600">
+                          ⚠️ This message is {currentSMS.messageLength} characters long and will be split into {currentSMS.estimatedSMS} SMS message{currentSMS.estimatedSMS > 1 ? 's' : ''}.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={approveCurrentSMS}
+                        disabled={isCurrentApproved}
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition font-medium ${
+                          isCurrentApproved
+                            ? 'bg-green-100 text-green-700 cursor-not-allowed'
+                            : 'bg-green-600 text-white hover:bg-green-700'
+                        }`}
+                      >
+                        <Check className="w-4 h-4" />
+                        {isCurrentApproved ? 'Approved' : 'Approve This SMS'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Footer Actions */}
+                <div className="flex gap-3 pt-4 border-t">
+                  <button
+                    onClick={() => {
+                      setShowSMSPreview(false);
+                      setCurrentSMSIndex(0);
+                      setApprovedSMS(new Set());
+                    }}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={approveAllSMS}
+                    disabled={approvedCount === totalSMS}
+                    className={`flex-1 px-4 py-2 rounded-lg transition font-medium ${
+                      approvedCount === totalSMS
+                        ? 'bg-green-100 text-green-700 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                  >
+                    Approve All ({approvedCount}/{totalSMS})
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSMSPreview(false);
+                      // Show approval modal if needed, otherwise send directly
+                      if ((targetType === 'batch' && targetValue && selectedMemberIds.length > 0) ||
+                          (targetType === 'select-members' && selectedMemberIds.length > 0)) {
+                        setShowApproval(true);
+                      } else {
+                        sendCampaign();
+                      }
+                    }}
+                    disabled={approvedCount === 0}
+                    className={`flex-1 px-4 py-2 rounded-lg transition font-medium ${
+                      approvedCount === 0
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                  >
+                    Send Approved ({approvedCount})
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Approval Modal */}
       {showApproval && (
