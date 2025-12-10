@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Try to parse as JSON first (some errors return JSON)
-    let statusCode: number;
+    let statusCode: number | null = null;
     let jsonResponse: any = null;
     
     try {
@@ -212,11 +212,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse response as number (API usually returns status code as text/number)
-    if (!jsonResponse) {
-      statusCode = parseInt(trimmedResponse);
+    if (statusCode === null) {
+      const parsedCode = parseInt(trimmedResponse);
       
       // Check if status code is valid number
-      if (isNaN(statusCode)) {
+      if (isNaN(parsedCode)) {
         console.error('Invalid response from BulkSMSBD API. Expected number or JSON, got:', trimmedResponse);
         return NextResponse.json(
           {
@@ -229,6 +229,7 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
+      statusCode = parsedCode;
     }
 
     if (statusCode === 202) {
@@ -384,7 +385,7 @@ async function sendBulkSMS(
         }
         
         // Try to parse as JSON first
-        let statusCode: number;
+        let statusCode: number | null = null;
         let jsonResponse: any = null;
         
         try {
@@ -407,10 +408,10 @@ async function sendBulkSMS(
         }
         
         // Parse as number if not JSON
-        if (!jsonResponse) {
-          statusCode = parseInt(responseText.trim());
+        if (statusCode === null) {
+          const parsedCode = parseInt(responseText.trim());
           
-          if (isNaN(statusCode)) {
+          if (isNaN(parsedCode)) {
             errors.push({
               number: formattedNumber,
               error: `Invalid API response: ${responseText.substring(0, 100)}`,
@@ -418,6 +419,7 @@ async function sendBulkSMS(
             });
             continue;
           }
+          statusCode = parsedCode;
         }
 
         if (statusCode === 202) {
