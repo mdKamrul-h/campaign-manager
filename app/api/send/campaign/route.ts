@@ -396,11 +396,21 @@ export async function POST(request: NextRequest) {
                 } else {
                   success = false;
                   // Get detailed error message (handle both Railway and direct API formats)
-                  error = smsResult.error || smsResult.details || smsResult.message || `SMS sending failed (Status: ${response.status})`;
-                  const statusCode = smsResult.statusCode || parseInt(smsResult.code) || 0;
-                  if (statusCode) {
-                    error = `${error} (Error Code: ${statusCode})`;
+                  let errorMsg = smsResult.error || smsResult.details || smsResult.message || `SMS sending failed (Status: ${response.status})`;
+                  
+                  // Ensure error message is a string (not an object)
+                  if (typeof errorMsg !== 'string') {
+                    errorMsg = typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : String(errorMsg);
                   }
+                  
+                  const statusCode = smsResult.statusCode || (smsResult.code ? parseInt(String(smsResult.code)) : 0) || 0;
+                  
+                  if (statusCode && statusCode > 0) {
+                    error = `${errorMsg} (Error Code: ${statusCode})`;
+                  } else {
+                    error = errorMsg;
+                  }
+                  
                   console.error(`SMS failed for ${member.name} (${member.mobile}):`, {
                     error: error,
                     statusCode: statusCode,

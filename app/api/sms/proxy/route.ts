@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get Railway SMS service URL from environment (support both variable names)
-    const railwayServiceUrl = process.env.SMS_PROXY_URL || process.env.RAILWAY_SMS_SERVICE_URL;
+    let railwayServiceUrl = process.env.SMS_PROXY_URL || process.env.RAILWAY_SMS_SERVICE_URL;
     
     if (!railwayServiceUrl) {
       return NextResponse.json(
@@ -62,6 +62,14 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Normalize URL - ensure it has https:// protocol
+    railwayServiceUrl = railwayServiceUrl.trim();
+    if (!railwayServiceUrl.startsWith('http://') && !railwayServiceUrl.startsWith('https://')) {
+      railwayServiceUrl = `https://${railwayServiceUrl}`;
+    }
+    // Remove trailing slash if present
+    railwayServiceUrl = railwayServiceUrl.replace(/\/$/, '');
 
     // Determine endpoint and format request for Railway service
     let railwayUrl: string;
@@ -92,7 +100,8 @@ export async function POST(request: NextRequest) {
       endpoint: numbers ? 'bulk' : 'single',
       hasTo: !!to,
       hasNumbers: !!numbers,
-      numbersCount: numbers?.length || 0
+      numbersCount: numbers?.length || 0,
+      requestBody: numbers ? { numbersCount: requestBody.numbers?.length, message: requestBody.message?.substring(0, 50) } : { number: requestBody.number, message: requestBody.message?.substring(0, 50) }
     });
 
     try {
@@ -107,12 +116,15 @@ export async function POST(request: NextRequest) {
         signal: AbortSignal.timeout(60000), // 60 second timeout for Railway
       });
 
+      console.log('Railway response status:', response.status, response.statusText);
+
       // Handle response
       const contentType = response.headers.get('content-type');
       let result;
 
       if (contentType && contentType.includes('application/json')) {
         result = await response.json();
+        console.log('Railway SMS service response:', JSON.stringify(result));
       } else {
         const textResponse = await response.text();
         console.error('Railway SMS service returned non-JSON response:', textResponse.substring(0, 200));
@@ -125,25 +137,59 @@ export async function POST(request: NextRequest) {
 
       // Railway service returns: { success: true/false, code: "202", message: "...", data: "..." }
       // Convert to our expected format
-      if (result.success) {
+      if (result.success === true || result.success === 'true') {
         // Success - Railway returns code "202" for success
+        const codeValue = typeof result.code === 'string' ? result.code : String(result.code || '202');
         return NextResponse.json({
           success: true,
           status: 'sent',
-          statusCode: parseInt(result.code) || 202,
+          statusCode: parseInt(codeValue) || 202,
           message: result.message || 'SMS Submitted Successfully',
           to: to || 'bulk',
           senderId: senderId || undefined
         });
       } else {
         // Error - return Railway's error format
+        // Handle different error formats from Railway
+        let errorMessage = 'Failed to send SMS';
+        let statusCode = 0;
+        let errorCode: string | number | undefined;
+        let errorDetails: any = null;
+
+        if (typeof result.message === 'string') {
+          errorMessage = result.message;
+        } else if (typeof result.error === 'string') {
+          errorMessage = result.error;
+        } else if (result.error && typeof result.error === 'object') {
+          errorMessage = JSON.stringify(result.error);
+          errorDetails = result.error;
+        }
+
+        if (result.code) {
+          errorCode = result.code;
+          const codeStr = typeof result.code === 'string' ? result.code : String(result.code);
+          statusCode = parseInt(codeStr) || 0;
+        }
+
+        if (result.data) {
+          errorDetails = result.data;
+        }
+
+        console.error('Railway SMS service error:', {
+          success: result.success,
+          code: errorCode,
+          message: errorMessage,
+          details: errorDetails,
+          fullResponse: result
+        });
+
         return NextResponse.json(
           {
             success: false,
-            error: result.message || result.error || 'Failed to send SMS',
-            statusCode: parseInt(result.code) || 0,
-            code: result.code,
-            details: result.data || result.error
+            error: errorMessage,
+            statusCode: statusCode,
+            code: errorCode,
+            details: errorDetails || result.data || result.error
           },
           { status: response.status >= 400 ? response.status : 400 }
         );
@@ -170,7 +216,7 @@ export async function POST(request: NextRequest) {
             success: false,
             error: 'Cannot connect to Railway SMS service',
             details: fetchError.message || 'Network error',
-            help: `Verify RAILWAY_SMS_SERVICE_URL is correct: ${railwayServiceUrl}. Check if the Railway service is deployed and running.`
+            help: `Verify SMS_PROXY_URL is correct: ${railwayServiceUrl}. Make sure it includes https:// protocol. Check if the Railway service is deployed and running.`
           },
           { status: 502 }
         );

@@ -31,8 +31,11 @@
    - Click **Add New**
    - **Key:** `SMS_PROXY_URL`
    - **Value:** `https://bulksms-proxy-production.up.railway.app`
+   - ⚠️ **IMPORTANT:** Make sure to include `https://` at the beginning!
    - **Environment:** Select all (Production, Preview, Development)
    - Click **Save**
+   
+   **Note:** The code will automatically add `https://` if missing, but it's better to include it explicitly.
 
 ### Step 2: Verify Existing Environment Variables
 
