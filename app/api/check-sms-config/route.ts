@@ -13,16 +13,6 @@ export async function GET() {
     const senderId = process.env.SMS_SENDER_ID || 'MALLICK NDC';
     const apiBaseUrl = process.env.BULKSMSBD_API_URL || 'http://bulksmsbd.net/api';
 
-    const diagnostics: any = {
-      hasApiKey: !!apiKey,
-      apiKeyLength: apiKey?.length || 0,
-      apiKeyFormat: apiKey ? (apiKey.length > 10 ? 'VALID' : 'TOO_SHORT') : 'MISSING',
-      senderId: senderId,
-      apiBaseUrl: apiBaseUrl,
-      serverIP: serverIP,
-      note: 'SMS configuration check'
-    };
-
     // Get current server IP address (for whitelisting)
     let serverIP: string | null = null;
     try {
@@ -39,6 +29,16 @@ export async function GET() {
       // Failed to get IP, that's okay
       console.log('Could not fetch server IP:', e);
     }
+
+    const diagnostics: any = {
+      hasApiKey: !!apiKey,
+      apiKeyLength: apiKey?.length || 0,
+      apiKeyFormat: apiKey ? (apiKey.length > 10 ? 'VALID' : 'TOO_SHORT') : 'MISSING',
+      senderId: senderId,
+      apiBaseUrl: apiBaseUrl,
+      serverIP: serverIP,
+      note: 'SMS configuration check'
+    };
 
     // Check balance API (if available)
     if (apiKey) {
