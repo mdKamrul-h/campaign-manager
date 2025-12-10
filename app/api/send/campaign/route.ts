@@ -4,12 +4,13 @@ import { replaceVariables } from '@/lib/variable-replacement';
 import { createEmailHTML, createEmailText } from '@/lib/email-formatter';
 
 export async function POST(request: NextRequest) {
+  let channel: string | undefined; // Declare channel outside try block for error handling
   try {
     const {
       title,
       content,
       visual_url,
-      channel,
+      channel: requestChannel,
       targetType,
       targetValue,
       selectedMemberIds, // Specific member IDs to send to (for batch selection)
@@ -19,6 +20,8 @@ export async function POST(request: NextRequest) {
       modifiedEmails, // Modified emails: { memberId: { subject, content } }
       approvedMemberIds, // Only send to approved member IDs if provided
     } = await request.json();
+    
+    channel = requestChannel; // Assign to outer variable
 
     // Validation: Must send either text or visual
     if (!sendText && !sendVisual) {
@@ -377,22 +380,52 @@ export async function POST(request: NextRequest) {
                   console.log(`SMS sent successfully to ${member.name} (${member.mobile}): Status ${smsResult.statusCode}`);
                 } else {
                   success = false;
-                  error = smsResult.error || 'SMS sending failed';
-                  console.error(`SMS failed for ${member.name} (${member.mobile}):`, smsResult.error || smsResult.statusCode || 'Unknown error');
+                  // Get detailed error message
+                  error = smsResult.error || smsResult.details || smsResult.message || `SMS sending failed (Status: ${response.status})`;
+                  if (smsResult.statusCode) {
+                    error = `${error} (Error Code: ${smsResult.statusCode})`;
+                  }
+                  console.error(`SMS failed for ${member.name} (${member.mobile}):`, {
+                    error: error,
+                    statusCode: smsResult.statusCode,
+                    response: smsResult
+                  });
                 }
               }
             } catch (smsError: any) {
               success = false;
-              error = smsError.message || 'Failed to send SMS';
-              console.error(`SMS error for ${member.name} (${member.mobile}):`, smsError);
+              // Capture more detailed error information
+              let errorMsg = 'Failed to send SMS';
+              if (smsError.message) {
+                errorMsg = smsError.message;
+              } else if (smsError.error) {
+                errorMsg = smsError.error;
+              } else if (typeof smsError === 'string') {
+                errorMsg = smsError;
+              }
+              
+              // Add context about the error
+              if (smsError.message?.includes('fetch failed') || smsError.message?.includes('Failed to fetch')) {
+                errorMsg = 'Network error: Cannot reach SMS API. Check NEXTAUTH_URL and network connectivity.';
+              } else if (smsError.message?.includes('timeout')) {
+                errorMsg = 'Request timeout: SMS API took too long to respond.';
+              }
+              
+              error = errorMsg;
+              console.error(`SMS error for ${member.name} (${member.mobile}):`, {
+                error: smsError,
+                message: smsError.message,
+                stack: smsError.stack,
+                name: smsError.name
+              });
             }
           }
-        } else if (['facebook', 'instagram', 'linkedin', 'whatsapp'].includes(channel)) {
+        } else if (channel && ['facebook', 'instagram', 'linkedin', 'whatsapp'].includes(channel)) {
           const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/send/social`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              platform: channel,
+              platform: channel as string,
               message: content,
               imageUrl: sendVisual ? visual_url : null,
             }),
@@ -439,9 +472,47 @@ export async function POST(request: NextRequest) {
         : undefined
     });
   } catch (error: any) {
-    console.error('Send campaign error:', error);
+    console.error('Send campaign error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      channel: channel,
+      error: error
+    });
+    
+    // Provide more detailed error messages
+    let errorMessage = 'Failed to send campaign';
+    let errorDetails = '';
+    
+    if (error.message) {
+      errorMessage = error.message;
+    } else if (error.name) {
+      errorMessage = `${error.name}: ${error.message || 'Unknown error'}`;
+    }
+    
+    // Check for common error types
+    if (error.message?.includes('fetch failed') || error.message?.includes('Failed to fetch')) {
+      errorMessage = 'Network error: Unable to reach service';
+      errorDetails = 'Check your NEXTAUTH_URL environment variable and network connectivity.';
+    } else if (error.message?.includes('timeout')) {
+      errorMessage = 'Request timeout: Service took too long to respond';
+      errorDetails = 'The API may be slow or unavailable. Please try again.';
+    } else if (error.message?.includes('ECONNREFUSED')) {
+      errorMessage = 'Connection refused: Cannot connect to service';
+      errorDetails = 'Check if the API endpoint is accessible.';
+    }
+    
     return NextResponse.json(
-      { error: error.message || 'Failed to send campaign' },
+      { 
+        error: errorMessage,
+        details: errorDetails || error.message || 'Unknown error occurred',
+        channel: channel,
+        help: channel === 'sms' 
+          ? 'Check: 1) BULKSMSBD_API_KEY is set, 2) SMS_SENDER_ID is correct, 3) Phone numbers are valid, 4) API is accessible'
+          : channel === 'email'
+          ? 'Check: 1) RESEND_API_KEY is set, 2) FROM_EMAIL is configured, 3) Email addresses are valid'
+          : 'Check your configuration and try again'
+      },
       { status: 500 }
     );
   }

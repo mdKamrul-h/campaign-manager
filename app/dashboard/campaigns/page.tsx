@@ -635,18 +635,25 @@ function CampaignsPageContent() {
         setShowEmailPreview(false);
       } else {
         // Show contextual error message based on channel
-        const errorMessage = result.error || 'Unknown error';
-        let helpMessage = '';
+        const errorMessage = result.error || result.details || 'Unknown error';
+        let helpMessage = result.help || '';
         
-        if (channel === 'email') {
-          helpMessage = 'Check your email configuration (RESEND_API_KEY) and ensure member email addresses are valid.';
-        } else if (channel === 'sms') {
-          helpMessage = 'Check your SMS configuration and phone numbers.';
-        } else {
-          helpMessage = 'Check your configuration and try again.';
+        if (!helpMessage) {
+          if (channel === 'email') {
+            helpMessage = 'Check your email configuration (RESEND_API_KEY) and ensure member email addresses are valid.';
+          } else if (channel === 'sms') {
+            helpMessage = 'Check your SMS configuration:\n1. BULKSMSBD_API_KEY is set in Vercel\n2. SMS_SENDER_ID is correct\n3. Phone numbers are valid (880XXXXXXXXX format)\n4. Visit /api/check-sms-config to test configuration';
+          } else {
+            helpMessage = 'Check your configuration and try again.';
+          }
         }
         
-        alert(`Failed to send campaign: ${errorMessage}\n\n${helpMessage}`);
+        // Show detailed error if available
+        const fullError = result.details 
+          ? `${errorMessage}\n\nDetails: ${result.details}`
+          : errorMessage;
+        
+        alert(`Failed to send campaign: ${fullError}\n\n${helpMessage}`);
         setShowApproval(false);
         setShowEmailPreview(false);
       }
