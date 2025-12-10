@@ -19,8 +19,26 @@ export async function GET() {
       apiKeyFormat: apiKey ? (apiKey.length > 10 ? 'VALID' : 'TOO_SHORT') : 'MISSING',
       senderId: senderId,
       apiBaseUrl: apiBaseUrl,
+      serverIP: serverIP,
       note: 'SMS configuration check'
     };
+
+    // Get current server IP address (for whitelisting)
+    let serverIP: string | null = null;
+    try {
+      // Try to get IP from a service that shows your server's IP
+      const ipResponse = await fetch('https://api.ipify.org?format=json', {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+      });
+      if (ipResponse.ok) {
+        const ipData = await ipResponse.json();
+        serverIP = ipData.ip || null;
+      }
+    } catch (e) {
+      // Failed to get IP, that's okay
+      console.log('Could not fetch server IP:', e);
+    }
 
     // Check balance API (if available)
     if (apiKey) {
@@ -114,7 +132,9 @@ export async function GET() {
         'SMS system is ready to use!',
         `Current balance: ${diagnostics.balance !== null ? diagnostics.balance : 'Unable to check'}`,
         `Sender ID: ${senderId}`,
-        'Note: Sender ID must match exactly as registered (case-sensitive)'
+        serverIP ? `Your current server IP: ${serverIP} (whitelist this in BulkSMSBD if you get error 1032)` : 'Could not determine server IP',
+        'Note: Sender ID must match exactly as registered (case-sensitive)',
+        'Note: If using Vercel, IP may change. Contact BulkSMSBD support for IP range whitelisting.'
       ]
     });
   } catch (error: any) {

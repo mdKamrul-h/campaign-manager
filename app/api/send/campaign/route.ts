@@ -350,7 +350,13 @@ export async function POST(request: NextRequest) {
                 // Replace variables in SMS content for each member
                 const personalizedContent = replaceVariables(content, member);
                 
-                const response = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/send/sms`, {
+                // Use Railway SMS proxy if configured, otherwise use direct SMS route
+                // Support both SMS_PROXY_URL and RAILWAY_SMS_SERVICE_URL for compatibility
+                const smsEndpoint = (process.env.SMS_PROXY_URL || process.env.RAILWAY_SMS_SERVICE_URL)
+                  ? `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/sms/proxy`
+                  : `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/send/sms`;
+                
+                const response = await fetch(smsEndpoint, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -375,19 +381,30 @@ export async function POST(request: NextRequest) {
                   };
                 }
                 
-                if (response.ok && smsResult.success) {
+                // Handle Railway proxy response format
+                // Railway returns: { success: true, code: "202", message: "...", ... }
+                // Direct SMS returns: { success: true, statusCode: 202, ... }
+                const isSuccess = smsResult.success === true || 
+                                 smsResult.statusCode === 202 || 
+                                 smsResult.code === '202' || 
+                                 smsResult.code === 202;
+                
+                if (response.ok && isSuccess) {
                   success = true;
-                  console.log(`SMS sent successfully to ${member.name} (${member.mobile}): Status ${smsResult.statusCode}`);
+                  const statusCode = smsResult.statusCode || parseInt(smsResult.code) || 202;
+                  console.log(`SMS sent successfully to ${member.name} (${member.mobile}): Status ${statusCode}`);
                 } else {
                   success = false;
-                  // Get detailed error message
+                  // Get detailed error message (handle both Railway and direct API formats)
                   error = smsResult.error || smsResult.details || smsResult.message || `SMS sending failed (Status: ${response.status})`;
-                  if (smsResult.statusCode) {
-                    error = `${error} (Error Code: ${smsResult.statusCode})`;
+                  const statusCode = smsResult.statusCode || parseInt(smsResult.code) || 0;
+                  if (statusCode) {
+                    error = `${error} (Error Code: ${statusCode})`;
                   }
                   console.error(`SMS failed for ${member.name} (${member.mobile}):`, {
                     error: error,
-                    statusCode: smsResult.statusCode,
+                    statusCode: statusCode,
+                    code: smsResult.code,
                     response: smsResult
                   });
                 }
