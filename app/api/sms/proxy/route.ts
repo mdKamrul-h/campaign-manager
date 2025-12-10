@@ -156,28 +156,73 @@ export async function POST(request: NextRequest) {
         let errorCode: string | number | undefined;
         let errorDetails: any = null;
 
-        if (typeof result.message === 'string') {
-          errorMessage = result.message;
-        } else if (typeof result.error === 'string') {
-          errorMessage = result.error;
-        } else if (result.error && typeof result.error === 'object') {
-          errorMessage = JSON.stringify(result.error);
-          errorDetails = result.error;
+        // Extract error details from result.data if it exists (BulkSMSBD JSON response)
+        // This is the primary source of truth for BulkSMSBD errors
+        if (result.data && typeof result.data === 'object') {
+          // BulkSMSBD returns: { response_code: 1032, error_message: "...", ... }
+          if (result.data.response_code) {
+            statusCode = parseInt(String(result.data.response_code)) || 0;
+            errorCode = result.data.response_code;
+          }
+          if (result.data.error_message) {
+            // Prioritize error_message from data over generic messages
+            errorMessage = result.data.error_message;
+          }
+          errorDetails = result.data;
         }
 
-        if (result.code) {
+        // Handle result.code - might be '[object Object]' if Railway service has a bug
+        // Only use if we haven't already extracted from result.data
+        if (statusCode === 0 && result.code && result.code !== '[object Object]') {
           errorCode = result.code;
           const codeStr = typeof result.code === 'string' ? result.code : String(result.code);
-          statusCode = parseInt(codeStr) || 0;
+          const parsedCode = parseInt(codeStr);
+          if (!isNaN(parsedCode)) {
+            statusCode = parsedCode;
+          }
         }
 
-        if (result.data) {
+        // Extract error message (only if not already set from result.data)
+        if (errorMessage === 'Failed to send SMS') {
+          if (typeof result.message === 'string' && result.message !== 'Error code: [object Object]') {
+            errorMessage = result.message;
+          } else if (typeof result.error === 'string') {
+            errorMessage = result.error;
+          } else if (result.error && typeof result.error === 'object') {
+            errorMessage = JSON.stringify(result.error);
+            if (!errorDetails) errorDetails = result.error;
+          }
+        }
+
+        // If we still don't have error details, use result.data
+        if (!errorDetails && result.data) {
           errorDetails = result.data;
+        }
+
+        // Special handling for IP whitelist error (1032)
+        if (statusCode === 1032 || errorCode === 1032) {
+          const ipAddress = errorMessage?.match(/\d+\.\d+\.\d+\.\d+/)?.[0] || 
+                           errorDetails?.error_message?.match(/\d+\.\d+\.\d+\.\d+/)?.[0] || 
+                           'unknown';
+          errorMessage = `IP Not Whitelisted (Error 1032)`;
+          return NextResponse.json(
+            {
+              success: false,
+              error: errorMessage,
+              statusCode: 1032,
+              code: 1032,
+              ipAddress: ipAddress,
+              details: errorDetails?.error_message || errorMessage,
+              help: `Your Railway IP (${ipAddress}) needs to be whitelisted in BulkSMSBD dashboard. Contact BulkSMSBD support to whitelist this IP address.`
+            },
+            { status: 403 }
+          );
         }
 
         console.error('Railway SMS service error:', {
           success: result.success,
           code: errorCode,
+          statusCode: statusCode,
           message: errorMessage,
           details: errorDetails,
           fullResponse: result
