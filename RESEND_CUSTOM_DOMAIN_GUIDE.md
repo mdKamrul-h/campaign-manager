@@ -121,3 +121,4 @@ If emails to custom domains consistently fail:
 5. Check Vercel function logs for detailed error messages
 6. Contact Resend support if the issue persists
 
+

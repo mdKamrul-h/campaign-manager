@@ -108,3 +108,4 @@ After deployment, test your app:
 3. Check browser console for errors (F12)
 4. Check Vercel logs for backend errors
 
+

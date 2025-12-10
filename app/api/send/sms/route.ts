@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // BulkSMSBD.net API Configuration
 const API_KEY = process.env.BULKSMSBD_API_KEY || 'Bh6WCte0rmh9n0CCepCo';
-const DEFAULT_SENDER_ID = process.env.SMS_SENDER_ID || 'Mallick NDC';
+// Note: Sender ID must match exactly as registered in BulkSMSBD (case-sensitive)
+// API docs show "MALLICK NDC" (all caps), but use what's registered in your account
+const DEFAULT_SENDER_ID = process.env.SMS_SENDER_ID || 'MALLICK NDC';
 // Try HTTPS first, fallback to HTTP if needed
 const API_BASE_URL = process.env.BULKSMSBD_API_URL || 'http://bulksmsbd.net/api';
 

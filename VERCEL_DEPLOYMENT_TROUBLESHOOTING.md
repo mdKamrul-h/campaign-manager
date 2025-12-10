@@ -219,3 +219,4 @@ npx tsc --noEmit
 - **Database:** Make sure Supabase project is active (not paused)
 - **Cron Jobs:** Only work on Vercel Pro plan, use external service for Hobby plan
 
+
