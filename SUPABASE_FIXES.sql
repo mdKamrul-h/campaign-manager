@@ -113,6 +113,20 @@ BEGIN
     END IF;
 END $$;
 
+-- Add name_bangla to members if missing
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'members' AND column_name = 'name_bangla'
+    ) THEN
+        ALTER TABLE members ADD COLUMN name_bangla VARCHAR(255);
+        RAISE NOTICE 'Added name_bangla column to members table';
+    ELSE
+        RAISE NOTICE 'name_bangla column already exists in members table';
+    END IF;
+END $$;
+
 -- Add custom_visual_url to campaigns if missing
 DO $$ 
 BEGIN

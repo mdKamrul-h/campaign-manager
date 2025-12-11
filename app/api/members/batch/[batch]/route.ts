@@ -14,7 +14,7 @@ export async function GET(
     // Handle "No Batch" case (members with NULL batch)
     let query = supabaseAdmin
       .from('members')
-      .select('*');
+      .select('id, name, name_bangla, email, mobile, membership_type, batch, image_url, created_at, updated_at');
 
     if (batch === '' || batch === '(No Batch)' || !batch) {
       // Get members with NULL or empty batch

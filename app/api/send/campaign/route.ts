@@ -68,37 +68,110 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validation: targetType is required
+    if (!targetType) {
+      return NextResponse.json(
+        { error: 'Target type is required. Please select who to send the campaign to.' },
+        { status: 400 }
+      );
+    }
+
+    // Validation: For select-members, selectedMemberIds must be provided
+    if (targetType === 'select-members') {
+      if (!selectedMemberIds || !Array.isArray(selectedMemberIds) || selectedMemberIds.length === 0) {
+        return NextResponse.json(
+          { error: 'Please select at least one member to send the campaign to.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validation: For batch, membership, and batch-filter, targetValue must be provided
+    if (['batch', 'membership', 'batch-filter'].includes(targetType) && !targetValue) {
+      return NextResponse.json(
+        { error: `Target value is required for ${targetType} selection.` },
+        { status: 400 }
+      );
+    }
+
     // Get target members
-    let query = supabaseAdmin.from('members').select('*');
+    let query = supabaseAdmin.from('members').select('id, name, name_bangla, email, mobile, membership_type, batch, image_url, created_at, updated_at');
+
+    // Debug: Log target criteria
+    console.log('Campaign target criteria:', {
+      targetType,
+      targetValue,
+      selectedMemberIds: selectedMemberIds?.length || 0,
+      selectedMemberIdsArray: selectedMemberIds
+    });
 
     if (targetType === 'select-members' && selectedMemberIds && Array.isArray(selectedMemberIds) && selectedMemberIds.length > 0) {
       // Use specific member IDs for select-members option
+      console.log('Using select-members with IDs:', selectedMemberIds);
       query = query.in('id', selectedMemberIds);
     } else if (targetType === 'batch' && targetValue) {
       if (selectedMemberIds && Array.isArray(selectedMemberIds) && selectedMemberIds.length > 0) {
         // Use specific member IDs if provided
+        console.log('Using batch with selected member IDs:', selectedMemberIds);
         query = query.in('id', selectedMemberIds);
       } else {
         // Otherwise, get all members in batch
+        console.log('Using batch filter:', targetValue);
         query = query.eq('batch', targetValue);
       }
     } else if (targetType === 'batch-filter' && targetValue) {
       // Filter by batch year ranges - handled below in the query execution section
       // Set query to get all members with batch (we'll filter in memory)
+      console.log('Using batch-filter:', targetValue);
       query = query.not('batch', 'is', null);
     } else if (targetType === 'membership' && targetValue) {
       // Use pattern matching for membership types (GM-*, DM-*, FM-*, LM-*)
+      console.log('Using membership filter:', targetValue, `pattern: ${targetValue}-%`);
       query = query.like('membership_type', `${targetValue}-%`);
+    } else if (targetType === 'all') {
+      console.log('Using all members (no filter)');
+      // No filter needed - get all members
+    } else {
+      console.warn('Unknown targetType or missing targetValue:', { targetType, targetValue });
     }
 
     // Execute query and filter members
     let members;
     const { data: queryMembers, error: membersError } = await query;
-    if (membersError) throw membersError;
+    
+    if (membersError) {
+      console.error('Error fetching members:', membersError);
+      return NextResponse.json(
+        { 
+          error: 'Failed to fetch members from database',
+          details: {
+            code: membersError.code,
+            message: membersError.message,
+            hint: membersError.hint,
+            targetType,
+            targetValue
+          }
+        },
+        { status: 500 }
+      );
+    }
+    
+    // Ensure queryMembers is an array
+    const safeQueryMembers = Array.isArray(queryMembers) ? queryMembers : [];
+    
+    console.log('Query returned members:', safeQueryMembers.length);
+    if (safeQueryMembers.length > 0) {
+      console.log('Sample member from query:', {
+        id: safeQueryMembers[0].id,
+        name: safeQueryMembers[0].name,
+        mobile: safeQueryMembers[0].mobile
+      });
+    }
     
     if (targetType === 'batch-filter' && targetValue) {
       // Filter by batch year ranges in memory
-      members = (queryMembers || []).filter(m => {
+      const beforeFilter = safeQueryMembers.length;
+      members = safeQueryMembers.filter(m => {
         if (!m.batch || m.batch.trim() === '') return false;
         const batchNum = parseInt(m.batch);
         if (isNaN(batchNum)) return false;
@@ -112,16 +185,49 @@ export async function POST(request: NextRequest) {
         }
         return false;
       });
+      console.log(`Batch filter: ${beforeFilter} members before filter, ${members.length} after filter`);
     } else {
-      members = queryMembers;
+      members = safeQueryMembers;
     }
 
     if (!members || members.length === 0) {
+      // First, check if there are ANY members in the database
+      const { data: allMembersCheck, error: checkError } = await supabaseAdmin
+        .from('members')
+        .select('id')
+        .limit(1);
+      
+      const hasAnyMembers = !checkError && Array.isArray(allMembersCheck) && allMembersCheck.length > 0;
+      
+      console.error('No members found with criteria:', {
+        targetType,
+        targetValue,
+        selectedMemberIds: selectedMemberIds?.length || 0,
+        queryMembersCount: safeQueryMembers.length,
+        channel,
+        hasAnyMembersInDB: hasAnyMembers,
+        databaseCheckError: checkError?.message
+      });
+      
       return NextResponse.json(
-        { error: 'No members found matching the criteria' },
+        { 
+          error: 'No members found matching the criteria',
+          details: {
+            targetType,
+            targetValue,
+            selectedMemberIdsCount: selectedMemberIds?.length || 0,
+            queryReturnedCount: safeQueryMembers.length,
+            hasAnyMembersInDatabase: hasAnyMembers,
+            suggestion: hasAnyMembers 
+              ? 'Try selecting different criteria or check your filter settings'
+              : 'No members found in database. Please add members first.'
+          }
+        },
         { status: 400 }
       );
     }
+    
+    console.log(`Found ${members.length} members to send campaign to`);
 
     // Save campaign
     const { data: campaign, error: campaignError } = await supabaseAdmin

@@ -5,13 +5,25 @@ export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
       .from('members')
-      .select('*')
+      .select('id, name, name_bangla, email, mobile, membership_type, batch, image_url, created_at, updated_at')
       .order('created_at', { ascending: false })
       .limit(10000); // Load all members at once (increased limit for large datasets)
 
     if (error) {
       console.error('Supabase error:', error);
+      console.error('Supabase error details:', JSON.stringify(error, null, 2));
       return NextResponse.json([], { status: 200 }); // Return empty array instead of error
+    }
+    
+    // Check if name_bangla column is missing from response
+    if (data && Array.isArray(data) && data.length > 0) {
+      const firstMember = data[0];
+      if (!('name_bangla' in firstMember)) {
+        console.error('⚠️ WARNING: name_bangla column is NOT being returned by Supabase!');
+        console.error('This means the column might not exist in the database or there is a column name mismatch.');
+        console.error('Member keys received:', Object.keys(firstMember));
+        console.error('Expected keys should include: name_bangla');
+      }
     }
 
     // Debug: Log sample member to verify name_bangla is included
