@@ -41,9 +41,25 @@ export function replaceVariables(content: string, member: Member): string {
   let personalizedContent = content;
 
   // Replace Bangla name FIRST (before regular name to avoid partial matches)
+  // Check if name_bangla exists and has content
+  const banglaName = (member.name_bangla && typeof member.name_bangla === 'string' && member.name_bangla.trim()) 
+    ? member.name_bangla.trim() 
+    : '';
+  
+  // Debug logging (can be removed in production)
+  if (personalizedContent.includes('[Name Bangla]') || personalizedContent.includes('[Recipient\'s Name Bangla]')) {
+    console.log('Replacing Bangla name variable:', {
+      hasBanglaName: !!banglaName,
+      banglaName: banglaName || '(empty)',
+      memberId: member.id,
+      memberName: member.name,
+      name_bangla: member.name_bangla || '(not set)'
+    });
+  }
+  
   personalizedContent = personalizedContent.replace(
     VARIABLE_PATTERNS.NAME_BANGLA,
-    member.name_bangla || member.name || 'Valued Member'
+    banglaName
   );
 
   // Replace name

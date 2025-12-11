@@ -22,6 +22,7 @@ export default function MembersPage() {
 
   const [formData, setFormData] = useState({
     name: '',
+    name_bangla: '',
     email: '',
     mobile: '',
     membership_type: 'GM' as 'GM' | 'LM' | 'FM' | 'OTHER',
@@ -81,6 +82,7 @@ export default function MembersPage() {
       filtered = filtered.filter(
         (member) =>
           member?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          member?.name_bangla?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           member?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           member?.mobile?.includes(searchTerm) ||
           member?.membership_type?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -142,6 +144,7 @@ export default function MembersPage() {
     setEditingMember(member);
     setFormData({
       name: member.name,
+      name_bangla: member.name_bangla || '',
       email: member.email,
       mobile: member.mobile,
       membership_type: member.membership_type,
@@ -155,6 +158,7 @@ export default function MembersPage() {
     setEditingMember(null);
     setFormData({
       name: '',
+      name_bangla: '',
       email: '',
       mobile: '',
       membership_type: 'GM',
@@ -256,7 +260,7 @@ export default function MembersPage() {
             <Search className="w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by name, email, mobile, batch, or membership type..."
+              placeholder="Search by name (English/Bangla), email, mobile, batch, or membership type..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -362,6 +366,9 @@ export default function MembersPage() {
                 Name
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Name (Bangla)
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Email
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -402,6 +409,9 @@ export default function MembersPage() {
                     {member.name}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {member.name_bangla || '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {member.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -433,7 +443,7 @@ export default function MembersPage() {
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">
+                <td colSpan={8} className="px-6 py-8 text-center text-sm text-gray-500">
                   {Array.isArray(filteredMembers) ? 'No members found' : 'Loading members...'}
                 </td>
               </tr>
@@ -461,6 +471,20 @@ export default function MembersPage() {
                   }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name (Bangla)
+                </label>
+                <input
+                  type="text"
+                  value={formData.name_bangla}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name_bangla: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Enter Bangla name (optional)"
                 />
               </div>
               <div>

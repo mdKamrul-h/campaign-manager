@@ -7,7 +7,7 @@ export async function PUT(
 ) {
   try {
     const body = await request.json();
-    const { name, email, mobile, membership_type, batch, image_url } = body;
+    const { name, name_bangla, email, mobile, membership_type, batch, image_url } = body;
 
     if (!name || !email || !mobile || !membership_type) {
       return NextResponse.json(
@@ -20,6 +20,7 @@ export async function PUT(
       .from('members')
       .update({
         name: name.trim(),
+        name_bangla: name_bangla?.trim() || null,
         email: email.trim(),
         mobile: mobile.trim(),
         membership_type,

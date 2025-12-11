@@ -344,6 +344,16 @@ export async function POST(request: NextRequest) {
                 success = false;
               } else {
                 // Replace variables in SMS content for each member
+                // Debug: Log member data to verify name_bangla is being fetched
+                if (content.includes('[Name Bangla]') || content.includes('[Recipient\'s Name Bangla]')) {
+                  console.log('SMS Member data check:', {
+                    memberId: member.id,
+                    name: member.name,
+                    name_bangla: member.name_bangla || '(null/undefined)',
+                    hasNameBangla: !!member.name_bangla,
+                    nameBanglaType: typeof member.name_bangla
+                  });
+                }
                 const personalizedContent = replaceVariables(content, member);
                 
                 // Use Railway SMS proxy if configured, otherwise use direct SMS route
