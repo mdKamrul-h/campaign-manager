@@ -128,10 +128,9 @@ export function calculateSMSCount(message: string): {
   count: number;
   isUnicode: boolean;
   charsPerSMS: number;
-  maxLength: number;
 } {
   if (!message) {
-    return { count: 0, isUnicode: false, charsPerSMS: 160, maxLength: 1600 };
+    return { count: 0, isUnicode: false, charsPerSMS: 160 };
   }
 
   const isUnicode = containsUnicode(message);
@@ -140,7 +139,7 @@ export function calculateSMSCount(message: string): {
   if (isUnicode) {
     // Unicode encoding: 70 chars for single SMS, 67 for each additional segment
     if (length <= 70) {
-      return { count: 1, isUnicode: true, charsPerSMS: 70, maxLength: 700 };
+      return { count: 1, isUnicode: true, charsPerSMS: 70 };
     }
     // For concatenated Unicode: first SMS = 70, subsequent = 67
     const additionalSegments = Math.ceil((length - 70) / 67);
@@ -148,12 +147,11 @@ export function calculateSMSCount(message: string): {
       count: 1 + additionalSegments,
       isUnicode: true,
       charsPerSMS: 70,
-      maxLength: 700, // ~10 SMS messages (70 + 9*67 = 673 chars)
     };
   } else {
     // GSM-7 encoding: 160 chars for single SMS, 153 for each additional segment
     if (length <= 160) {
-      return { count: 1, isUnicode: false, charsPerSMS: 160, maxLength: 1600 };
+      return { count: 1, isUnicode: false, charsPerSMS: 160 };
     }
     // For concatenated GSM-7: first SMS = 160, subsequent = 153
     const additionalSegments = Math.ceil((length - 160) / 153);
@@ -161,7 +159,6 @@ export function calculateSMSCount(message: string): {
       count: 1 + additionalSegments,
       isUnicode: false,
       charsPerSMS: 160,
-      maxLength: 1600, // ~10 SMS messages (160 + 9*153 = 1537 chars)
     };
   }
 }

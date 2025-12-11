@@ -47,21 +47,9 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      
-      // Import SMS calculation utility
-      const { calculateSMSCount } = await import('@/lib/variable-replacement');
-      const smsInfo = calculateSMSCount(content);
-      
-      // Validate length based on encoding type
-      if (content.length > smsInfo.maxLength) {
-        const encodingType = smsInfo.isUnicode ? 'Unicode (Bangla/other scripts)' : 'GSM-7 (English)';
-        return NextResponse.json(
-          { 
-            error: `SMS content is too long (${content.length} characters, ${encodingType} encoding). Maximum allowed: ${smsInfo.maxLength} characters (~10 SMS messages).` 
-          },
-          { status: 400 }
-        );
-      }
+      // Note: We don't limit message length here because BulkSMSBD automatically handles
+      // concatenated messages and calculates the number of SMS segments based on encoding.
+      // Unicode messages (with Bangla) use 70 chars per SMS, English uses 160 chars per SMS.
     }
 
     // Validation: If sending visual, visual URL is required
