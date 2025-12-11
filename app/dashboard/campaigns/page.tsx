@@ -13,7 +13,33 @@ function CampaignsPageContent() {
   const editCampaignId = searchParams.get('edit');
   const [loading, setLoading] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState(false);
-  const { members, loading: membersLoading } = useMembers();
+  const { members, loading: membersLoading, refreshMembers } = useMembers();
+  
+  // Debug: Log members when they change to verify name_bangla is present
+  useEffect(() => {
+    if (members.length > 0) {
+      const sampleMember = members[0];
+      console.log('CampaignsPage - Sample member from context:', {
+        id: sampleMember.id,
+        name: sampleMember.name,
+        hasNameBangla: 'name_bangla' in sampleMember,
+        name_bangla: sampleMember.name_bangla,
+        name_bangla_type: typeof sampleMember.name_bangla,
+        allKeys: Object.keys(sampleMember)
+      });
+      
+      // Check specific member if we're previewing
+      const memberWithId = members.find(m => m.id === 'fa293de5-4a3b-40a2-96b2-a590972c8638');
+      if (memberWithId) {
+        console.log('CampaignsPage - Found member Ali Asif Khan:', {
+          id: memberWithId.id,
+          name: memberWithId.name,
+          name_bangla: memberWithId.name_bangla,
+          hasNameBangla: !!(memberWithId.name_bangla && typeof memberWithId.name_bangla === 'string' && memberWithId.name_bangla.trim())
+        });
+      }
+    }
+  }, [members]);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -909,14 +935,40 @@ function CampaignsPageContent() {
     return targetMembers
       .filter(member => member.mobile && member.mobile.trim())
       .map((member) => {
+        // Debug: Log member data to check if name_bangla is present
+        const usesBanglaVariable = (finalContent || '').includes('[Name Bangla]') || (finalContent || '').includes('[Recipient\'s Name Bangla]');
+        if (usesBanglaVariable) {
+          console.log('SMS Preview - Member data:', {
+            memberId: member.id,
+            name: member.name,
+            name_bangla: member.name_bangla,
+            name_bangla_type: typeof member.name_bangla,
+            name_bangla_length: member.name_bangla?.length,
+            hasNameBangla: !!(member.name_bangla && typeof member.name_bangla === 'string' && member.name_bangla.trim()),
+            allKeys: Object.keys(member)
+          });
+        }
+        
         const personalizedContent = replaceVariables(finalContent || '', member);
         const smsInfo = calculateSMSCount(personalizedContent);
+        const hasBanglaName = !!(member.name_bangla && typeof member.name_bangla === 'string' && member.name_bangla.trim());
+        
+        if (usesBanglaVariable) {
+          console.log('SMS Preview - After replacement:', {
+            originalContent: finalContent?.substring(0, 100),
+            personalizedContent: personalizedContent.substring(0, 100),
+            replaced: personalizedContent !== finalContent
+          });
+        }
         
         return {
           memberId: member.id,
           to: member.mobile || 'No phone',
           message: personalizedContent,
           memberName: member.name,
+          memberBanglaName: member.name_bangla || null,
+          hasBanglaName: hasBanglaName,
+          usesBanglaVariable: usesBanglaVariable,
           messageLength: personalizedContent.length,
           estimatedSMS: smsInfo.count,
           isUnicode: smsInfo.isUnicode,
@@ -978,7 +1030,23 @@ function CampaignsPageContent() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-gray-900">
-          {editingCampaign ? 'Edit Campaign' : 'Create Campaign'}
+          <div className="flex items-center justify-between w-full">
+            <h1 className="text-3xl font-bold text-gray-900">
+              {editingCampaign ? 'Edit Campaign' : 'Create Campaign'}
+            </h1>
+            <button
+              onClick={async () => {
+                console.log('Manually refreshing members...');
+                await refreshMembers();
+                alert('Members refreshed! Check console for details.');
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              title="Refresh members data from database"
+            >
+              <RefreshCw className="w-5 h-5" />
+              Refresh Members
+            </button>
+          </div>
         </h1>
         <div className="flex gap-2">
           {editingCampaign && (
@@ -2191,6 +2259,15 @@ function CampaignsPageContent() {
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
                           {currentSMS.memberName} {isCurrentApproved && <span className="text-green-600">✓ Approved</span>}
+                          {currentSMS.usesBanglaVariable && (
+                            <div className="mt-1 text-xs">
+                              {currentSMS.hasBanglaName ? (
+                                <span className="text-green-600">✓ Bangla name: {currentSMS.memberBanglaName}</span>
+                              ) : (
+                                <span className="text-amber-600">⚠ Using English name (no Bangla name in DB)</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                       
@@ -2208,6 +2285,11 @@ function CampaignsPageContent() {
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
                       <p>This is the actual SMS that will be sent to <strong>{currentSMS.memberName}</strong> ({currentSMS.to}).</p>
                       <p className="mt-1">Variables have been replaced with actual member data.</p>
+                      {currentSMS.usesBanglaVariable && !currentSMS.hasBanglaName && (
+                        <p className="mt-2 text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                          ⚠️ <strong>Note:</strong> This member doesn't have a Bangla name in the database. The English name ({currentSMS.memberName}) is being used as a fallback for <code>[Name Bangla]</code> or <code>[Recipient's Name Bangla]</code>. Consider adding the Bangla name in the Members page.
+                        </p>
+                      )}
                     </div>
                     
                     <div className="border border-gray-200 rounded-lg p-4 bg-white">

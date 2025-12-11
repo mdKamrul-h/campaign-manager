@@ -42,18 +42,20 @@ export function replaceVariables(content: string, member: Member): string {
 
   // Replace Bangla name FIRST (before regular name to avoid partial matches)
   // Check if name_bangla exists and has content
+  // If not available, fall back to English name (better UX than empty string)
   const banglaName = (member.name_bangla && typeof member.name_bangla === 'string' && member.name_bangla.trim()) 
     ? member.name_bangla.trim() 
-    : '';
+    : (member.name || 'Valued Member'); // Fallback to English name if Bangla name not available
   
   // Debug logging (can be removed in production)
   if (personalizedContent.includes('[Name Bangla]') || personalizedContent.includes('[Recipient\'s Name Bangla]')) {
+    const hasBanglaName = !!(member.name_bangla && typeof member.name_bangla === 'string' && member.name_bangla.trim());
     console.log('Replacing Bangla name variable:', {
-      hasBanglaName: !!banglaName,
-      banglaName: banglaName || '(empty)',
+      hasBanglaName: hasBanglaName,
+      banglaName: hasBanglaName ? member.name_bangla.trim() : '(using English name as fallback)',
       memberId: member.id,
       memberName: member.name,
-      name_bangla: member.name_bangla || '(not set)'
+      name_bangla: member.name_bangla || '(not set - using English name)'
     });
   }
   

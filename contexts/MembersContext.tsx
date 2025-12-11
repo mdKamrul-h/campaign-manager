@@ -21,7 +21,14 @@ export function MembersProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/members');
+      // Add cache-busting parameter to force fresh data
+      const response = await fetch(`/api/members?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
       
       if (!response.ok) {
         throw new Error(`Failed to fetch members: ${response.statusText}`);
@@ -30,6 +37,33 @@ export function MembersProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       
       if (Array.isArray(data)) {
+        // Debug: Log sample member to verify name_bangla is in the response
+        if (data.length > 0) {
+          const sampleMember = data[0];
+          console.log('MembersContext - Sample member received:', {
+            id: sampleMember.id,
+            name: sampleMember.name,
+            hasNameBangla: 'name_bangla' in sampleMember,
+            name_bangla: sampleMember.name_bangla,
+            name_bangla_type: typeof sampleMember.name_bangla,
+            allKeys: Object.keys(sampleMember)
+          });
+          
+          // Check if any member has name_bangla
+          const membersWithBangla = data.filter(m => m.name_bangla && m.name_bangla.trim());
+          console.log(`MembersContext - Members with Bangla names: ${membersWithBangla.length} out of ${data.length}`);
+          
+          // Log a specific member if we're looking for Ali Asif Khan
+          const aliMember = data.find(m => m.name && m.name.includes('Ali Asif'));
+          if (aliMember) {
+            console.log('MembersContext - Found Ali Asif Khan member:', {
+              id: aliMember.id,
+              name: aliMember.name,
+              name_bangla: aliMember.name_bangla,
+              hasNameBangla: !!(aliMember.name_bangla && typeof aliMember.name_bangla === 'string' && aliMember.name_bangla.trim())
+            });
+          }
+        }
         setMembers(data);
       } else if (data && data.error) {
         throw new Error(data.error);

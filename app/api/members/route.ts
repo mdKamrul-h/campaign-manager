@@ -14,6 +14,19 @@ export async function GET() {
       return NextResponse.json([], { status: 200 }); // Return empty array instead of error
     }
 
+    // Debug: Log sample member to verify name_bangla is included
+    if (data && Array.isArray(data) && data.length > 0) {
+      const sampleMember = data[0];
+      console.log('Sample member from API:', {
+        id: sampleMember.id,
+        name: sampleMember.name,
+        hasNameBangla: 'name_bangla' in sampleMember,
+        name_bangla: sampleMember.name_bangla,
+        name_bangla_type: typeof sampleMember.name_bangla,
+        allKeys: Object.keys(sampleMember)
+      });
+    }
+
     return NextResponse.json(Array.isArray(data) ? data : []);
   } catch (error: any) {
     console.error('Get members error:', error);
