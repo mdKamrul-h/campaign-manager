@@ -3,43 +3,61 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET() {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('members')
-      .select('id, name, name_bangla, email, mobile, membership_type, batch, image_url, created_at, updated_at')
-      .order('created_at', { ascending: false })
-      .limit(10000); // Load all members at once (increased limit for large datasets)
+    // Fetch all members using pagination to ensure we get everything
+    // Supabase has default limits, so we paginate to get all members
+    let allMembers: any[] = [];
+    let page = 0;
+    const pageSize = 1000; // Supabase's typical max per request
+    let hasMore = true;
 
-    if (error) {
-      console.error('Supabase error:', error);
-      console.error('Supabase error details:', JSON.stringify(error, null, 2));
-      return NextResponse.json([], { status: 200 }); // Return empty array instead of error
+    while (hasMore) {
+      const { data, error } = await supabaseAdmin
+        .from('members')
+        .select('id, name, name_bangla, email, mobile, membership_type, batch, image_url, created_at, updated_at')
+        .order('name', { ascending: true }) // Order by name to ensure consistent ordering
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+
+      if (error) {
+        console.error(`Error fetching members (page ${page}):`, error);
+        console.error('Supabase error details:', JSON.stringify(error, null, 2));
+        // Continue with what we have so far
+        break;
+      }
+
+      if (!data || data.length === 0) {
+        hasMore = false;
+      } else {
+        allMembers = allMembers.concat(data);
+        // If we got fewer than pageSize, we've reached the end
+        hasMore = data.length === pageSize;
+        page++;
+      }
     }
-    
+
+    console.log(`Fetched ${allMembers.length} members across ${page} pages`);
+
     // Check if name_bangla column is missing from response
-    if (data && Array.isArray(data) && data.length > 0) {
-      const firstMember = data[0];
+    if (allMembers.length > 0) {
+      const firstMember = allMembers[0];
       if (!('name_bangla' in firstMember)) {
         console.error('⚠️ WARNING: name_bangla column is NOT being returned by Supabase!');
         console.error('This means the column might not exist in the database or there is a column name mismatch.');
         console.error('Member keys received:', Object.keys(firstMember));
         console.error('Expected keys should include: name_bangla');
       }
-    }
 
-    // Debug: Log sample member to verify name_bangla is included
-    if (data && Array.isArray(data) && data.length > 0) {
-      const sampleMember = data[0];
+      // Debug: Log sample member to verify name_bangla is included
       console.log('Sample member from API:', {
-        id: sampleMember.id,
-        name: sampleMember.name,
-        hasNameBangla: 'name_bangla' in sampleMember,
-        name_bangla: sampleMember.name_bangla,
-        name_bangla_type: typeof sampleMember.name_bangla,
-        allKeys: Object.keys(sampleMember)
+        id: firstMember.id,
+        name: firstMember.name,
+        hasNameBangla: 'name_bangla' in firstMember,
+        name_bangla: firstMember.name_bangla,
+        name_bangla_type: typeof firstMember.name_bangla,
+        allKeys: Object.keys(firstMember)
       });
     }
 
-    return NextResponse.json(Array.isArray(data) ? data : []);
+    return NextResponse.json(allMembers);
   } catch (error: any) {
     console.error('Get members error:', error);
     return NextResponse.json([], { status: 200 }); // Return empty array on error

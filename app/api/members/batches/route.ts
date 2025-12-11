@@ -7,24 +7,42 @@ import { supabaseAdmin } from '@/lib/supabase';
  */
 export async function GET() {
   try {
-    // Get ALL members (including those without batch)
-    const { data: members, error } = await supabaseAdmin
-      .from('members')
-      .select('batch');
+    // Get ALL members (including those without batch) using pagination
+    // Supabase has a default limit, so we need to fetch in chunks
+    let allMembers: Array<{ batch: string | null }> = [];
+    let page = 0;
+    const pageSize = 1000; // Supabase's typical max per request
+    let hasMore = true;
 
-    if (error) {
-      console.error('Error fetching batches:', error);
-      return NextResponse.json(
-        { error: error.message || 'Failed to fetch batches' },
-        { status: 500 }
-      );
+    while (hasMore) {
+      const { data: members, error } = await supabaseAdmin
+        .from('members')
+        .select('batch')
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+
+      if (error) {
+        console.error(`Error fetching batches (page ${page}):`, error);
+        // Continue with what we have so far
+        break;
+      }
+
+      if (!members || members.length === 0) {
+        hasMore = false;
+      } else {
+        allMembers = allMembers.concat(members);
+        // If we got fewer than pageSize, we've reached the end
+        hasMore = members.length === pageSize;
+        page++;
+      }
     }
+
+    console.log(`Fetched ${allMembers.length} members across ${page} pages for batch counting`);
 
     // Count members per batch (including NULL as "No Batch")
     const batchCounts: Record<string, number> = {};
     let totalCount = 0;
 
-    (members || []).forEach((member) => {
+    allMembers.forEach((member) => {
       totalCount++;
       const batch = member.batch?.trim() || null;
       const batchKey = batch || '(No Batch)';
