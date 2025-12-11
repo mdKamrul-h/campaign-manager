@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Sparkles, Image as ImageIcon, Send, Upload, Edit3, Eye, RefreshCw, X, Info, ChevronLeft, ChevronRight, Check, Save } from 'lucide-react';
 import { Member } from '@/types';
-import { getAvailableVariables, replaceVariables } from '@/lib/variable-replacement';
+import { getAvailableVariables, replaceVariables, calculateSMSCount } from '@/lib/variable-replacement';
 import { useMembers } from '@/contexts/MembersContext';
 
 function CampaignsPageContent() {
@@ -910,6 +910,7 @@ function CampaignsPageContent() {
       .filter(member => member.mobile && member.mobile.trim())
       .map((member) => {
         const personalizedContent = replaceVariables(finalContent || '', member);
+        const smsInfo = calculateSMSCount(personalizedContent);
         
         return {
           memberId: member.id,
@@ -917,7 +918,9 @@ function CampaignsPageContent() {
           message: personalizedContent,
           memberName: member.name,
           messageLength: personalizedContent.length,
-          estimatedSMS: Math.ceil(personalizedContent.length / 160), // SMS are ~160 chars each
+          estimatedSMS: smsInfo.count,
+          isUnicode: smsInfo.isUnicode,
+          charsPerSMS: smsInfo.charsPerSMS,
         };
       });
   };
@@ -1833,12 +1836,19 @@ function CampaignsPageContent() {
                   {getFinalContent() ? (
                     <div>
                       <p className="text-sm text-gray-700 whitespace-pre-wrap">{getFinalContent()}</p>
-                      {channel === 'sms' && (
-                        <p className="text-xs text-gray-500 mt-2">
-                          Length: {getFinalContent().length} characters
-                          {getFinalContent().length > 160 && ` (~${Math.ceil(getFinalContent().length / 160)} SMS messages)`}
-                        </p>
-                      )}
+                      {channel === 'sms' && (() => {
+                        const content = getFinalContent();
+                        const smsInfo = calculateSMSCount(content);
+                        return (
+                          <p className="text-xs text-gray-500 mt-2">
+                            Length: {content.length} characters
+                            {smsInfo.count > 1 && ` (~${smsInfo.count} SMS messages)`}
+                            {smsInfo.isUnicode && (
+                              <span className="text-blue-600 ml-1">(Unicode - Bangla/other scripts detected)</span>
+                            )}
+                          </p>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <p className="text-sm text-red-600 italic">No content {useCustomContent ? 'pasted' : 'generated'}</p>
@@ -2207,15 +2217,21 @@ function CampaignsPageContent() {
                         <div className="text-xs text-gray-500 mt-2 mb-1">Message Length:</div>
                         <div className="text-sm font-medium text-gray-900">
                           {currentSMS.messageLength} characters ({currentSMS.estimatedSMS} SMS)
+                          {currentSMS.isUnicode && (
+                            <span className="text-blue-600 ml-2">(Unicode - Bangla/other scripts)</span>
+                          )}
                         </div>
                       </div>
                       <div className="text-xs text-gray-500 mb-2">Message:</div>
                       <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-4 rounded border border-gray-100 max-h-96 overflow-y-auto font-mono">
                         {currentSMS.message}
                       </div>
-                      {currentSMS.messageLength > 160 && (
+                      {currentSMS.estimatedSMS > 1 && (
                         <div className="mt-3 pt-3 border-t text-xs text-amber-600">
                           ⚠️ This message is {currentSMS.messageLength} characters long and will be split into {currentSMS.estimatedSMS} SMS message{currentSMS.estimatedSMS > 1 ? 's' : ''}.
+                          {currentSMS.isUnicode && (
+                            <span className="block mt-1">Unicode messages use 70 characters per SMS (vs 160 for English-only).</span>
+                          )}
                         </div>
                       )}
                     </div>

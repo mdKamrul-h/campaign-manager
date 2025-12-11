@@ -98,6 +98,74 @@ export function getAvailableVariables(): Array<{ placeholder: string; descriptio
   ];
 }
 
+/**
+ * Check if a string contains Unicode characters (non-ASCII)
+ * This includes Bangla, Arabic, Chinese, and other non-Latin scripts
+ */
+export function containsUnicode(text: string): boolean {
+  if (!text) return false;
+  // Check if any character is outside the ASCII range (0-127)
+  // GSM-7 encoding supports ASCII 0-127, Unicode is needed for anything beyond
+  for (let i = 0; i < text.length; i++) {
+    const charCode = text.charCodeAt(i);
+    if (charCode > 127) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Calculate SMS count based on encoding type
+ * - GSM-7 (English only): 160 characters per SMS
+ * - Unicode (with Bangla/other scripts): 70 characters per SMS
+ * 
+ * For concatenated messages:
+ * - GSM-7: 153 characters per segment (after first)
+ * - Unicode: 67 characters per segment (after first)
+ */
+export function calculateSMSCount(message: string): {
+  count: number;
+  isUnicode: boolean;
+  charsPerSMS: number;
+  maxLength: number;
+} {
+  if (!message) {
+    return { count: 0, isUnicode: false, charsPerSMS: 160, maxLength: 1600 };
+  }
+
+  const isUnicode = containsUnicode(message);
+  const length = message.length;
+
+  if (isUnicode) {
+    // Unicode encoding: 70 chars for single SMS, 67 for each additional segment
+    if (length <= 70) {
+      return { count: 1, isUnicode: true, charsPerSMS: 70, maxLength: 700 };
+    }
+    // For concatenated Unicode: first SMS = 70, subsequent = 67
+    const additionalSegments = Math.ceil((length - 70) / 67);
+    return {
+      count: 1 + additionalSegments,
+      isUnicode: true,
+      charsPerSMS: 70,
+      maxLength: 700, // ~10 SMS messages (70 + 9*67 = 673 chars)
+    };
+  } else {
+    // GSM-7 encoding: 160 chars for single SMS, 153 for each additional segment
+    if (length <= 160) {
+      return { count: 1, isUnicode: false, charsPerSMS: 160, maxLength: 1600 };
+    }
+    // For concatenated GSM-7: first SMS = 160, subsequent = 153
+    const additionalSegments = Math.ceil((length - 160) / 153);
+    return {
+      count: 1 + additionalSegments,
+      isUnicode: false,
+      charsPerSMS: 160,
+      maxLength: 1600, // ~10 SMS messages (160 + 9*153 = 1537 chars)
+    };
+  }
+}
+
 
 
 

@@ -47,10 +47,18 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      // SMS content length validation (1600 chars = ~10 SMS messages)
-      if (content.length > 1600) {
+      
+      // Import SMS calculation utility
+      const { calculateSMSCount } = await import('@/lib/variable-replacement');
+      const smsInfo = calculateSMSCount(content);
+      
+      // Validate length based on encoding type
+      if (content.length > smsInfo.maxLength) {
+        const encodingType = smsInfo.isUnicode ? 'Unicode (Bangla/other scripts)' : 'GSM-7 (English)';
         return NextResponse.json(
-          { error: `SMS content is too long (${content.length} characters). Please keep it under 1600 characters.` },
+          { 
+            error: `SMS content is too long (${content.length} characters, ${encodingType} encoding). Maximum allowed: ${smsInfo.maxLength} characters (~10 SMS messages).` 
+          },
           { status: 400 }
         );
       }
