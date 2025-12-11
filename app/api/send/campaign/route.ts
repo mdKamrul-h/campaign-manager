@@ -471,7 +471,7 @@ export async function POST(request: NextRequest) {
             error_message: error,
           }]);
 
-        return { success, member: member.name };
+        return { success, member: member.name, error: error || undefined };
       } catch (err: any) {
         console.error(`Failed to send to ${member.name}:`, err);
         return { success: false, member: member.name, error: err.message };

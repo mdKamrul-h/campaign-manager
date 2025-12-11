@@ -187,3 +187,4 @@ Do you need SMS campaigns?
 **Namecheap Shared Hosting** is not recommended for Next.js apps - use VPS instead.
 
 **Vercel** is great for everything except SMS (due to dynamic IPs).
+

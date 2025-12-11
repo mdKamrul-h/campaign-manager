@@ -121,3 +121,4 @@ Your code is ready. Just:
 3. Test SMS campaigns
 
 Everything else is already configured! 🚀
+

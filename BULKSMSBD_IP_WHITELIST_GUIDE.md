@@ -123,3 +123,4 @@ For a permanent solution, you should:
 5. Save and test again
 
 **Remember**: This is a temporary fix. For a permanent solution, contact BulkSMSBD support about Vercel IP ranges.
+

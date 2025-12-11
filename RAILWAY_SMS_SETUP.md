@@ -257,3 +257,4 @@ PORT=3001
    - Should work without IP whitelist errors! 🎉
 
 **That's it!** The main app is already configured to use the Railway proxy automatically when `RAILWAY_SMS_SERVICE_URL` is set.
+

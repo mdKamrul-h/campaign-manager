@@ -192,3 +192,4 @@ Once you've:
 4. ✅ Confirmed IP is whitelisted
 
 Your SMS campaigns will automatically use Railway's static IP! 🚀
+

@@ -31,3 +31,4 @@ CREATE TRIGGER update_campaign_templates_updated_at
     EXECUTE FUNCTION update_campaign_templates_updated_at();
 
 
+
