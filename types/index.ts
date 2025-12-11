@@ -1,6 +1,7 @@
 export interface Member {
   id: string;
   name: string;
+  name_bangla?: string;
   email: string;
   mobile: string;
   membership_type: 'GM' | 'LM' | 'FM' | 'OTHER';

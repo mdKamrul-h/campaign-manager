@@ -6,6 +6,7 @@
 export interface Member {
   id: string;
   name: string;
+  name_bangla?: string;
   email?: string;
   mobile?: string;
   membership_type?: string;
@@ -16,6 +17,7 @@ export interface Member {
 /**
  * Available variable placeholders:
  * - [Recipient's Name] or [Name] - Member's name
+ * - [Recipient's Name Bangla] or [Name Bangla] - Member's Bangla name
  * - [Recipient's Email] or [Email] - Member's email
  * - [Recipient's Mobile] or [Mobile] or [Phone] - Member's mobile number
  * - [Membership Type] - Member's membership type
@@ -23,6 +25,7 @@ export interface Member {
  */
 export const VARIABLE_PATTERNS = {
   NAME: /\[Recipient'?s?\s*Name\]|\[Name\]/gi,
+  NAME_BANGLA: /\[Recipient'?s?\s*Name\s+Bangla\]|\[Name\s+Bangla\]/gi,
   EMAIL: /\[Recipient'?s?\s*Email\]|\[Email\]/gi,
   MOBILE: /\[Recipient'?s?\s*Mobile\]|\[Mobile\]|\[Phone\]/gi,
   MEMBERSHIP_TYPE: /\[Membership\s*Type\]/gi,
@@ -36,6 +39,12 @@ export function replaceVariables(content: string, member: Member): string {
   if (!content) return content;
 
   let personalizedContent = content;
+
+  // Replace Bangla name FIRST (before regular name to avoid partial matches)
+  personalizedContent = personalizedContent.replace(
+    VARIABLE_PATTERNS.NAME_BANGLA,
+    member.name_bangla || member.name || 'Valued Member'
+  );
 
   // Replace name
   personalizedContent = personalizedContent.replace(
@@ -77,6 +86,8 @@ export function getAvailableVariables(): Array<{ placeholder: string; descriptio
   return [
     { placeholder: '[Recipient\'s Name]', description: 'Member\'s full name' },
     { placeholder: '[Name]', description: 'Member\'s full name (short form)' },
+    { placeholder: '[Recipient\'s Name Bangla]', description: 'Member\'s Bangla name' },
+    { placeholder: '[Name Bangla]', description: 'Member\'s Bangla name (short form)' },
     { placeholder: '[Recipient\'s Email]', description: 'Member\'s email address' },
     { placeholder: '[Email]', description: 'Member\'s email address (short form)' },
     { placeholder: '[Recipient\'s Mobile]', description: 'Member\'s mobile number' },
