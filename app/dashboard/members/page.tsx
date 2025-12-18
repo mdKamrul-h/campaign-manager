@@ -328,11 +328,105 @@ export default function MembersPage() {
     window.URL.revokeObjectURL(url);
   };
 
+  const exportToCSV = () => {
+    // Use filtered members if filters are applied, otherwise use all members
+    const membersToExport = filteredMembers.length > 0 && (searchTerm || filterBatch || filterMembershipType) 
+      ? filteredMembers 
+      : members;
+
+    if (!Array.isArray(membersToExport) || membersToExport.length === 0) {
+      alert('No members to export');
+      return;
+    }
+
+    // Define CSV headers with all fields
+    const headers = [
+      'Name',
+      'Name (Bangla)',
+      'Email',
+      'Mobile',
+      'Membership Type',
+      'Batch',
+      'Blood Group',
+      'Higher Study',
+      'School',
+      'Home District',
+      'Organization',
+      'Position',
+      'Profession',
+      'NRB Country',
+      'Living in Area',
+      'Other Club Member',
+      'Image URL'
+    ];
+
+    // Escape CSV values (handle commas, quotes, and newlines)
+    const escapeCSV = (value: any): string => {
+      if (value === null || value === undefined) return '';
+      const stringValue = String(value);
+      // If value contains comma, quote, or newline, wrap in quotes and escape quotes
+      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+
+    // Create CSV rows
+    const csvRows = [
+      headers.join(','),
+      ...membersToExport.map(member => [
+        escapeCSV(member.name),
+        escapeCSV(member.name_bangla),
+        escapeCSV(member.email),
+        escapeCSV(member.mobile),
+        escapeCSV(member.membership_type),
+        escapeCSV(member.batch),
+        escapeCSV(member.blood_group),
+        escapeCSV(member.higher_study),
+        escapeCSV(member.school),
+        escapeCSV(member.home_district),
+        escapeCSV(member.organization),
+        escapeCSV(member.position),
+        escapeCSV(member.profession),
+        escapeCSV(member.nrb_country),
+        escapeCSV(member.living_in_area),
+        escapeCSV(member.other_club_member),
+        escapeCSV(member.image_url)
+      ].join(','))
+    ];
+
+    // Create CSV content
+    const csvContent = csvRows.join('\n');
+    
+    // Add BOM for UTF-8 to support special characters (like Bangla)
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const timestamp = new Date().toISOString().split('T')[0];
+    a.download = `members_export_${timestamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Members</h1>
         <div className="flex gap-3">
+          <button
+            onClick={exportToCSV}
+            className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition"
+            title="Export all members to CSV"
+          >
+            <Download className="w-5 h-5" />
+            Export CSV
+          </button>
           <button
             onClick={() => setShowImportModal(true)}
             className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
