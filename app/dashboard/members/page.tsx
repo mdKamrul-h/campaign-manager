@@ -18,7 +18,13 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importResult, setImportResult] = useState<{ imported: number; errors?: any[] } | null>(null);
+  const [importResult, setImportResult] = useState<{ 
+    imported: number; 
+    skipped?: number;
+    total?: number;
+    errors?: any[]; 
+    skippedDetails?: Array<{ row: number; name: string; email: string; mobile?: string; reason: string }>;
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -1221,7 +1227,7 @@ export default function MembersPage() {
                   <p className="font-semibold text-green-700">
                     ✓ {importResult.imported || 0} members imported successfully
                   </p>
-                  {importResult.skipped > 0 && (
+                  {importResult.skipped && importResult.skipped > 0 && (
                     <p className="text-sm text-gray-700">
                       ⚠ {importResult.skipped} members skipped (duplicates found)
                     </p>
@@ -1241,7 +1247,7 @@ export default function MembersPage() {
                           Row {skipped.row}: {skipped.name} ({skipped.email}) - {skipped.reason}
                         </li>
                       ))}
-                      {importResult.skipped > 10 && (
+                      {importResult.skipped && importResult.skipped > 10 && (
                         <li className="text-gray-500">... and {importResult.skipped - 10} more skipped</li>
                       )}
                     </ul>
