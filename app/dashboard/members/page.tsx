@@ -28,7 +28,10 @@ export default function MembersPage() {
     membership_type: '',
     batch: '',
     blood_group: '',
-    higher_study: '',
+    higher_study_1: '',
+    hs_1_institute: '',
+    higher_study_2: '',
+    hs_2_institute: '',
     school: '',
     home_district: '',
     organization: '',
@@ -38,6 +41,7 @@ export default function MembersPage() {
     nrb_country: '',
     living_in_area: '',
     other_club_member: '',
+    remarks: '',
     image_url: '',
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -104,7 +108,10 @@ export default function MembersPage() {
           member?.membership_type?.toLowerCase().includes(searchLower) ||
           member?.batch?.toLowerCase().includes(searchLower) ||
           member?.blood_group?.toLowerCase().includes(searchLower) ||
-          member?.higher_study?.toLowerCase().includes(searchLower) ||
+          member?.higher_study_1?.toLowerCase().includes(searchLower) ||
+          member?.hs_1_institute?.toLowerCase().includes(searchLower) ||
+          member?.higher_study_2?.toLowerCase().includes(searchLower) ||
+          member?.hs_2_institute?.toLowerCase().includes(searchLower) ||
           member?.school?.toLowerCase().includes(searchLower) ||
           member?.home_district?.toLowerCase().includes(searchLower) ||
           member?.organization?.toLowerCase().includes(searchLower) ||
@@ -113,7 +120,8 @@ export default function MembersPage() {
           member?.profession?.toLowerCase().includes(searchLower) ||
           member?.nrb_country?.toLowerCase().includes(searchLower) ||
           member?.living_in_area?.toLowerCase().includes(searchLower) ||
-          member?.other_club_member?.toLowerCase().includes(searchLower)
+          member?.other_club_member?.toLowerCase().includes(searchLower) ||
+          member?.remarks?.toLowerCase().includes(searchLower)
       );
     }
 
@@ -224,7 +232,10 @@ export default function MembersPage() {
       membership_type: member.membership_type,
       batch: member.batch || '',
       blood_group: member.blood_group || '',
-      higher_study: member.higher_study || '',
+      higher_study_1: member.higher_study_1 || '',
+      hs_1_institute: member.hs_1_institute || '',
+      higher_study_2: member.higher_study_2 || '',
+      hs_2_institute: member.hs_2_institute || '',
       school: member.school || '',
       home_district: member.home_district || '',
       organization: member.organization || '',
@@ -234,6 +245,7 @@ export default function MembersPage() {
       nrb_country: member.nrb_country || '',
       living_in_area: member.living_in_area || '',
       other_club_member: member.other_club_member || '',
+      remarks: member.remarks || '',
       image_url: member.image_url || '',
     });
     setImageFile(null);
@@ -252,7 +264,10 @@ export default function MembersPage() {
       membership_type: '',
       batch: '',
       blood_group: '',
-      higher_study: '',
+      higher_study_1: '',
+      hs_1_institute: '',
+      higher_study_2: '',
+      hs_2_institute: '',
       school: '',
       home_district: '',
       organization: '',
@@ -262,6 +277,7 @@ export default function MembersPage() {
       nrb_country: '',
       living_in_area: '',
       other_club_member: '',
+      remarks: '',
       image_url: '',
     });
     setImageFile(null);
@@ -352,7 +368,10 @@ export default function MembersPage() {
       'Membership Type',
       'Batch',
       'Blood Group',
-      'Higher Study',
+      'Higher Study 1',
+      'HS 1 Institute',
+      'Higher Study 2',
+      'HS 2 Institute',
       'School',
       'Home District',
       'Organization',
@@ -362,6 +381,7 @@ export default function MembersPage() {
       'NRB Country',
       'Living in Area',
       'Other Club Member',
+      'Remarks',
       'Image URL'
     ];
 
@@ -387,7 +407,10 @@ export default function MembersPage() {
         escapeCSV(member.membership_type),
         escapeCSV(member.batch),
         escapeCSV(member.blood_group),
-        escapeCSV(member.higher_study),
+        escapeCSV(member.higher_study_1),
+        escapeCSV(member.hs_1_institute),
+        escapeCSV(member.higher_study_2),
+        escapeCSV(member.hs_2_institute),
         escapeCSV(member.school),
         escapeCSV(member.home_district),
         escapeCSV(member.organization),
@@ -397,6 +420,7 @@ export default function MembersPage() {
         escapeCSV(member.nrb_country),
         escapeCSV(member.living_in_area),
         escapeCSV(member.other_club_member),
+        escapeCSV(member.remarks),
         escapeCSV(member.image_url)
       ].join(','))
     ];
@@ -583,7 +607,16 @@ export default function MembersPage() {
                   Blood Group
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Higher Study
+                  Higher Study 1
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  HS 1 Institute
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Higher Study 2
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  HS 2 Institute
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   School
@@ -611,6 +644,9 @@ export default function MembersPage() {
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Other Club
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Remarks
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky right-0 bg-gray-50 z-10">
                   Actions
@@ -670,7 +706,16 @@ export default function MembersPage() {
                       {member.blood_group || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {member.higher_study || '-'}
+                      {member.higher_study_1 || '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {member.hs_1_institute || '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {member.higher_study_2 || '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {member.hs_2_institute || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {member.school || '-'}
@@ -699,6 +744,9 @@ export default function MembersPage() {
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {member.other_club_member || '-'}
                     </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {member.remarks || '-'}
+                    </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-medium sticky right-0 bg-white z-10">
                       <div className="flex items-center gap-2">
                         <button
@@ -721,7 +769,7 @@ export default function MembersPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={19} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={23} className="px-6 py-8 text-center text-sm text-gray-500">
                     {Array.isArray(filteredMembers) ? 'No members found' : 'Loading members...'}
                   </td>
                 </tr>
@@ -888,16 +936,61 @@ export default function MembersPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Higher Study
+                    Higher Study 1
                   </label>
                   <input
                     type="text"
-                    value={formData.higher_study}
+                    value={formData.higher_study_1}
                     onChange={(e) =>
-                      setFormData({ ...formData, higher_study: e.target.value })
+                      setFormData({ ...formData, higher_study_1: e.target.value })
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                     placeholder="e.g., MBA, PhD, etc."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    HS 1 Institute
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.hs_1_institute}
+                    onChange={(e) =>
+                      setFormData({ ...formData, hs_1_institute: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Institute name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Higher Study 2
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.higher_study_2}
+                    onChange={(e) =>
+                      setFormData({ ...formData, higher_study_2: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="e.g., MBA, PhD, etc."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    HS 2 Institute
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.hs_2_institute}
+                    onChange={(e) =>
+                      setFormData({ ...formData, hs_2_institute: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Institute name"
                   />
                 </div>
 
@@ -1033,6 +1126,21 @@ export default function MembersPage() {
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                     placeholder="Other club memberships"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Remarks
+                  </label>
+                  <textarea
+                    value={formData.remarks}
+                    onChange={(e) =>
+                      setFormData({ ...formData, remarks: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Additional remarks or notes"
+                    rows={3}
                   />
                 </div>
               </div>

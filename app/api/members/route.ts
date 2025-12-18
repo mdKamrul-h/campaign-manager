@@ -13,7 +13,7 @@ export async function GET() {
     while (hasMore) {
       const { data, error } = await supabaseAdmin
         .from('members')
-        .select('id, name, name_bangla, email, mobile, membership_type, batch, image_url, blood_group, higher_study, school, home_district, organization, position, department, profession, nrb_country, living_in_area, other_club_member, created_at, updated_at')
+        .select('id, name, name_bangla, email, mobile, membership_type, batch, image_url, blood_group, higher_study_1, hs_1_institute, higher_study_2, hs_2_institute, school, home_district, organization, position, department, profession, nrb_country, living_in_area, other_club_member, remarks, created_at, updated_at')
         .order('name', { ascending: true }) // Order by name to ensure consistent ordering
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -76,7 +76,10 @@ export async function POST(request: NextRequest) {
       batch, 
       image_url,
       blood_group,
-      higher_study,
+      higher_study_1,
+      hs_1_institute,
+      higher_study_2,
+      hs_2_institute,
       school,
       home_district,
       organization,
@@ -85,7 +88,8 @@ export async function POST(request: NextRequest) {
       profession,
       nrb_country,
       living_in_area,
-      other_club_member
+      other_club_member,
+      remarks
     } = body;
 
     if (!name || !email || !mobile || !membership_type) {
@@ -106,7 +110,10 @@ export async function POST(request: NextRequest) {
         batch: batch?.trim() || null,
         image_url: image_url || null,
         blood_group: blood_group?.trim() || null,
-        higher_study: higher_study?.trim() || null,
+        higher_study_1: higher_study_1?.trim() || null,
+        hs_1_institute: hs_1_institute?.trim() || null,
+        higher_study_2: higher_study_2?.trim() || null,
+        hs_2_institute: hs_2_institute?.trim() || null,
         school: school?.trim() || null,
         home_district: home_district?.trim() || null,
         organization: organization?.trim() || null,
@@ -115,7 +122,8 @@ export async function POST(request: NextRequest) {
         profession: profession?.trim() || null,
         nrb_country: nrb_country?.trim() || null,
         living_in_area: living_in_area?.trim() || null,
-        other_club_member: other_club_member?.trim() || null
+        other_club_member: other_club_member?.trim() || null,
+        remarks: remarks?.trim() || null
       }])
       .select()
       .single();

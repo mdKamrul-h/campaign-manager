@@ -8,7 +8,10 @@ export interface Member {
   batch?: string;
   image_url?: string;
   blood_group?: string;
-  higher_study?: string;
+  higher_study_1?: string;
+  hs_1_institute?: string;
+  higher_study_2?: string;
+  hs_2_institute?: string;
   school?: string;
   home_district?: string;
   organization?: string;
@@ -18,6 +21,7 @@ export interface Member {
   nrb_country?: string;
   living_in_area?: string;
   other_club_member?: string;
+  remarks?: string;
   created_at: string;
   updated_at: string;
 }
