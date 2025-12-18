@@ -398,3 +398,6 @@ Once deployed, your Contabo server will have a static IP like:
 
 **This IP will never change**, so you can whitelist it in BulkSMSBD and it will work permanently!
 
+
+
+

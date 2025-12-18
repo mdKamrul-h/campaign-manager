@@ -27,7 +27,21 @@ export default function MembersPage() {
     mobile: '',
     membership_type: 'GM' as 'GM' | 'LM' | 'FM' | 'OTHER',
     batch: '',
+    blood_group: '',
+    higher_study: '',
+    school: '',
+    home_district: '',
+    organization: '',
+    position: '',
+    profession: '',
+    nrb_country: '',
+    living_in_area: '',
+    other_club_member: '',
+    image_url: '',
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     fetchBatches();
@@ -94,11 +108,50 @@ export default function MembersPage() {
   }, [searchTerm, members, filterBatch, filterMembershipType]);
 
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      let imageUrl = formData.image_url;
+
+      // Upload image if a new file is selected
+      if (imageFile) {
+        setUploadingImage(true);
+        const uploadFormData = new FormData();
+        uploadFormData.append('file', imageFile);
+
+        const uploadResponse = await fetch('/api/members/upload-image', {
+          method: 'POST',
+          body: uploadFormData,
+        });
+
+        if (uploadResponse.ok) {
+          const uploadData = await uploadResponse.json();
+          imageUrl = uploadData.url;
+        } else {
+          const errorData = await uploadResponse.json();
+          alert(`Failed to upload image: ${errorData.error}`);
+          setLoading(false);
+          setUploadingImage(false);
+          return;
+        }
+        setUploadingImage(false);
+      }
+
       const url = editingMember
         ? `/api/members/${editingMember.id}`
         : '/api/members';
@@ -107,7 +160,10 @@ export default function MembersPage() {
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          image_url: imageUrl,
+        }),
       });
 
       if (response.ok) {
@@ -117,11 +173,16 @@ export default function MembersPage() {
         
         // Trigger custom event for real-time updates (context will also listen to this)
         window.dispatchEvent(new CustomEvent('memberUpdated'));
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to save member: ${errorData.error}`);
       }
     } catch (error) {
       console.error('Failed to save member:', error);
+      alert('Failed to save member. Please try again.');
     } finally {
       setLoading(false);
+      setUploadingImage(false);
     }
   };
 
@@ -149,7 +210,20 @@ export default function MembersPage() {
       mobile: member.mobile,
       membership_type: member.membership_type,
       batch: member.batch || '',
+      blood_group: member.blood_group || '',
+      higher_study: member.higher_study || '',
+      school: member.school || '',
+      home_district: member.home_district || '',
+      organization: member.organization || '',
+      position: member.position || '',
+      profession: member.profession || '',
+      nrb_country: member.nrb_country || '',
+      living_in_area: member.living_in_area || '',
+      other_club_member: member.other_club_member || '',
+      image_url: member.image_url || '',
     });
+    setImageFile(null);
+    setImagePreview(member.image_url || '');
     setShowModal(true);
   };
 
@@ -163,7 +237,20 @@ export default function MembersPage() {
       mobile: '',
       membership_type: 'GM',
       batch: '',
+      blood_group: '',
+      higher_study: '',
+      school: '',
+      home_district: '',
+      organization: '',
+      position: '',
+      profession: '',
+      nrb_country: '',
+      living_in_area: '',
+      other_club_member: '',
+      image_url: '',
     });
+    setImageFile(null);
+    setImagePreview('');
   };
 
   const handleImport = async () => {
@@ -453,8 +540,8 @@ export default function MembersPage() {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-8 max-w-md w-full">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg p-8 max-w-2xl w-full my-8 max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">
               {editingMember ? 'Edit Member' : 'Add Member'}
             </h2>
@@ -549,6 +636,200 @@ export default function MembersPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
+
+              {/* Image Upload Section */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Member Photo
+                </label>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Max file size: 5MB. Supported formats: JPG, PNG, GIF
+                    </p>
+                  </div>
+                  {(imagePreview || formData.image_url) && (
+                    <div className="w-20 h-20 rounded-lg overflow-hidden border border-gray-300">
+                      <img
+                        src={imagePreview || formData.image_url}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* New Fields Section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Blood Group
+                  </label>
+                  <select
+                    value={formData.blood_group}
+                    onChange={(e) =>
+                      setFormData({ ...formData, blood_group: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="">Select Blood Group</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Higher Study
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.higher_study}
+                    onChange={(e) =>
+                      setFormData({ ...formData, higher_study: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="e.g., MBA, PhD, etc."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    School
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.school}
+                    onChange={(e) =>
+                      setFormData({ ...formData, school: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="School name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Home District
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.home_district}
+                    onChange={(e) =>
+                      setFormData({ ...formData, home_district: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="District name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Organization
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.organization}
+                    onChange={(e) =>
+                      setFormData({ ...formData, organization: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Organization name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Position
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.position}
+                    onChange={(e) =>
+                      setFormData({ ...formData, position: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Job position"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Profession
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.profession}
+                    onChange={(e) =>
+                      setFormData({ ...formData, profession: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Profession"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    NRB Country
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.nrb_country}
+                    onChange={(e) =>
+                      setFormData({ ...formData, nrb_country: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Country name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Living in Area
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.living_in_area}
+                    onChange={(e) =>
+                      setFormData({ ...formData, living_in_area: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Area/City name"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Other Club Member
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.other_club_member}
+                    onChange={(e) =>
+                      setFormData({ ...formData, other_club_member: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Other club memberships"
+                  />
+                </div>
+              </div>
+
               <div className="flex gap-4 mt-6">
                 <button
                   type="button"
@@ -559,10 +840,10 @@ export default function MembersPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || uploadingImage}
                   className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:bg-blue-400"
                 >
-                  {loading ? 'Saving...' : 'Save'}
+                  {uploadingImage ? 'Uploading Image...' : loading ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>

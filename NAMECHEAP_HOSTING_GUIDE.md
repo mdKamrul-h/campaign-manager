@@ -395,3 +395,6 @@ tail -f /var/log/nginx/error.log
 
 Your static IP from Namecheap VPS will never change, so SMS campaigns will work reliably! 🎉
 
+
+
+

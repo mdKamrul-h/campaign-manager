@@ -7,7 +7,25 @@ export async function PUT(
 ) {
   try {
     const body = await request.json();
-    const { name, name_bangla, email, mobile, membership_type, batch, image_url } = body;
+    const { 
+      name, 
+      name_bangla, 
+      email, 
+      mobile, 
+      membership_type, 
+      batch, 
+      image_url,
+      blood_group,
+      higher_study,
+      school,
+      home_district,
+      organization,
+      position,
+      profession,
+      nrb_country,
+      living_in_area,
+      other_club_member
+    } = body;
 
     if (!name || !email || !mobile || !membership_type) {
       return NextResponse.json(
@@ -25,7 +43,17 @@ export async function PUT(
         mobile: mobile.trim(),
         membership_type,
         batch: batch?.trim() || null,
-        image_url: image_url || null
+        image_url: image_url || null,
+        blood_group: blood_group?.trim() || null,
+        higher_study: higher_study?.trim() || null,
+        school: school?.trim() || null,
+        home_district: home_district?.trim() || null,
+        organization: organization?.trim() || null,
+        position: position?.trim() || null,
+        profession: profession?.trim() || null,
+        nrb_country: nrb_country?.trim() || null,
+        living_in_area: living_in_area?.trim() || null,
+        other_club_member: other_club_member?.trim() || null
       })
       .eq('id', params.id)
       .select()

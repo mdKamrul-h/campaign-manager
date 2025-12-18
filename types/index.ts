@@ -7,6 +7,16 @@ export interface Member {
   membership_type: 'GM' | 'LM' | 'FM' | 'OTHER';
   batch?: string;
   image_url?: string;
+  blood_group?: string;
+  higher_study?: string;
+  school?: string;
+  home_district?: string;
+  organization?: string;
+  position?: string;
+  profession?: string;
+  nrb_country?: string;
+  living_in_area?: string;
+  other_club_member?: string;
   created_at: string;
   updated_at: string;
 }
