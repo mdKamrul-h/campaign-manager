@@ -1169,20 +1169,21 @@ export default function MembersPage() {
       {showImportModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Import Members from Excel</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Import Members from Excel/CSV</h2>
             
             <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-              <h3 className="font-semibold mb-2">Excel File Format:</h3>
+              <h3 className="font-semibold mb-2">File Format:</h3>
               <p className="text-sm text-gray-700 mb-2">
-                Your Excel file should have the following columns:
+                Your Excel (.xlsx, .xls) or CSV (.csv) file should have the following columns:
               </p>
               <ul className="text-sm text-gray-700 list-disc list-inside space-y-1">
                 <li><strong>Name</strong> (required) - Full name of the member</li>
-                <li><strong>Email</strong> (required) - Email address</li>
-                <li><strong>Mobile</strong> (required) - Phone number</li>
+                <li><strong>Email</strong> (required) - Email address (used for duplicate detection)</li>
+                <li><strong>Mobile</strong> (required) - Phone number (used for duplicate detection)</li>
                 <li><strong>Membership Type</strong> - GM, LM, FM, or OTHER (defaults to GM)</li>
                 <li><strong>Batch</strong> - Batch identifier (optional)</li>
                 <li><strong>Image URL</strong> - URL or base64 image data (optional)</li>
+                <li className="mt-2"><strong>Note:</strong> Members with existing email or mobile will be automatically skipped</li>
               </ul>
               <button
                 onClick={downloadTemplate}
@@ -1195,11 +1196,11 @@ export default function MembersPage() {
 
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Excel File (.xlsx or .xls)
+                Select Excel or CSV File (.xlsx, .xls, or .csv)
               </label>
               <input
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.csv"
                 onChange={(e) => setImportFile(e.target.files?.[0] || null)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
@@ -1216,13 +1217,40 @@ export default function MembersPage() {
                   ? 'bg-yellow-50 border border-yellow-200'
                   : 'bg-green-50 border border-green-200'
               }`}>
-                <p className="font-semibold">
-                  {importResult.imported} members imported successfully
-                </p>
+                <div className="space-y-2">
+                  <p className="font-semibold text-green-700">
+                    ✓ {importResult.imported || 0} members imported successfully
+                  </p>
+                  {importResult.skipped > 0 && (
+                    <p className="text-sm text-gray-700">
+                      ⚠ {importResult.skipped} members skipped (duplicates found)
+                    </p>
+                  )}
+                  {importResult.total && (
+                    <p className="text-xs text-gray-600">
+                      Total rows processed: {importResult.total}
+                    </p>
+                  )}
+                </div>
+                {importResult.skippedDetails && importResult.skippedDetails.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    <p className="text-sm font-medium text-gray-700 mb-1">Skipped members (sample):</p>
+                    <ul className="text-xs text-gray-600 list-disc list-inside space-y-1 max-h-32 overflow-y-auto">
+                      {importResult.skippedDetails.map((skipped: any, idx: number) => (
+                        <li key={idx}>
+                          Row {skipped.row}: {skipped.name} ({skipped.email}) - {skipped.reason}
+                        </li>
+                      ))}
+                      {importResult.skipped > 10 && (
+                        <li className="text-gray-500">... and {importResult.skipped - 10} more skipped</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
                 {importResult.errors && importResult.errors.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-sm font-medium">Errors:</p>
-                    <ul className="text-sm list-disc list-inside mt-1">
+                  <div className="mt-3 pt-3 border-t border-yellow-200">
+                    <p className="text-sm font-medium text-yellow-800">Errors:</p>
+                    <ul className="text-sm list-disc list-inside mt-1 text-yellow-700">
                       {importResult.errors.slice(0, 5).map((err: any, idx: number) => (
                         <li key={idx}>Row {err.row}: {err.error}</li>
                       ))}
