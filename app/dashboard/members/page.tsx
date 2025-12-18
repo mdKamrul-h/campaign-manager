@@ -25,7 +25,7 @@ export default function MembersPage() {
     name_bangla: '',
     email: '',
     mobile: '',
-    membership_type: 'GM' as 'GM' | 'LM' | 'FM' | 'OTHER',
+    membership_type: '',
     batch: '',
     blood_group: '',
     higher_study: '',
@@ -33,6 +33,7 @@ export default function MembersPage() {
     home_district: '',
     organization: '',
     position: '',
+    department: '',
     profession: '',
     nrb_country: '',
     living_in_area: '',
@@ -108,6 +109,7 @@ export default function MembersPage() {
           member?.home_district?.toLowerCase().includes(searchLower) ||
           member?.organization?.toLowerCase().includes(searchLower) ||
           member?.position?.toLowerCase().includes(searchLower) ||
+          member?.department?.toLowerCase().includes(searchLower) ||
           member?.profession?.toLowerCase().includes(searchLower) ||
           member?.nrb_country?.toLowerCase().includes(searchLower) ||
           member?.living_in_area?.toLowerCase().includes(searchLower) ||
@@ -227,6 +229,7 @@ export default function MembersPage() {
       home_district: member.home_district || '',
       organization: member.organization || '',
       position: member.position || '',
+      department: member.department || '',
       profession: member.profession || '',
       nrb_country: member.nrb_country || '',
       living_in_area: member.living_in_area || '',
@@ -246,7 +249,7 @@ export default function MembersPage() {
       name_bangla: '',
       email: '',
       mobile: '',
-      membership_type: 'GM',
+      membership_type: '',
       batch: '',
       blood_group: '',
       higher_study: '',
@@ -254,6 +257,7 @@ export default function MembersPage() {
       home_district: '',
       organization: '',
       position: '',
+      department: '',
       profession: '',
       nrb_country: '',
       living_in_area: '',
@@ -353,6 +357,7 @@ export default function MembersPage() {
       'Home District',
       'Organization',
       'Position',
+      'Department',
       'Profession',
       'NRB Country',
       'Living in Area',
@@ -387,6 +392,7 @@ export default function MembersPage() {
         escapeCSV(member.home_district),
         escapeCSV(member.organization),
         escapeCSV(member.position),
+        escapeCSV(member.department),
         escapeCSV(member.profession),
         escapeCSV(member.nrb_country),
         escapeCSV(member.living_in_area),
@@ -592,6 +598,9 @@ export default function MembersPage() {
                   Position
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Department
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Profession
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -676,6 +685,9 @@ export default function MembersPage() {
                       {member.position || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {member.department || '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {member.profession || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -709,7 +721,7 @@ export default function MembersPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={18} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={19} className="px-6 py-8 text-center text-sm text-gray-500">
                     {Array.isArray(filteredMembers) ? 'No members found' : 'Loading members...'}
                   </td>
                 </tr>
@@ -786,22 +798,22 @@ export default function MembersPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Membership Type
                 </label>
-                <select
+                <input
+                  type="text"
                   value={formData.membership_type}
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      membership_type: e.target.value as 'GM' | 'LM' | 'FM' | 'OTHER',
+                      membership_type: e.target.value,
                     })
                   }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="e.g., GM-0202, LM-0204, FM-0101, etc."
                   required
-                >
-                  <option value="GM">GM</option>
-                  <option value="LM">LM</option>
-                  <option value="FM">FM</option>
-                  <option value="OTHER">OTHER</option>
-                </select>
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter membership type (e.g., GM-0202, LM-0204, FM-0101, OTHER, etc.)
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -946,6 +958,21 @@ export default function MembersPage() {
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                     placeholder="Job position"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Department
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.department}
+                    onChange={(e) =>
+                      setFormData({ ...formData, department: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Department name"
                   />
                 </div>
 

@@ -4,7 +4,7 @@ export interface Member {
   name_bangla?: string;
   email: string;
   mobile: string;
-  membership_type: 'GM' | 'LM' | 'FM' | 'OTHER';
+  membership_type: string;
   batch?: string;
   image_url?: string;
   blood_group?: string;
@@ -13,6 +13,7 @@ export interface Member {
   home_district?: string;
   organization?: string;
   position?: string;
+  department?: string;
   profession?: string;
   nrb_country?: string;
   living_in_area?: string;

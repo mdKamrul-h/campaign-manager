@@ -13,7 +13,7 @@ export async function GET() {
     while (hasMore) {
       const { data, error } = await supabaseAdmin
         .from('members')
-        .select('id, name, name_bangla, email, mobile, membership_type, batch, image_url, blood_group, higher_study, school, home_district, organization, position, profession, nrb_country, living_in_area, other_club_member, created_at, updated_at')
+        .select('id, name, name_bangla, email, mobile, membership_type, batch, image_url, blood_group, higher_study, school, home_district, organization, position, department, profession, nrb_country, living_in_area, other_club_member, created_at, updated_at')
         .order('name', { ascending: true }) // Order by name to ensure consistent ordering
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
       home_district,
       organization,
       position,
+      department,
       profession,
       nrb_country,
       living_in_area,
@@ -110,6 +111,7 @@ export async function POST(request: NextRequest) {
         home_district: home_district?.trim() || null,
         organization: organization?.trim() || null,
         position: position?.trim() || null,
+        department: department?.trim() || null,
         profession: profession?.trim() || null,
         nrb_country: nrb_country?.trim() || null,
         living_in_area: living_in_area?.trim() || null,
