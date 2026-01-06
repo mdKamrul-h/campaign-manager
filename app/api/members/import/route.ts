@@ -578,44 +578,16 @@ export async function POST(request: NextRequest) {
                 .single();
 
               if (singleError) {
-                // If mobile conflict fails, try email as fallback
+                // Handle mobile conflict error (unique constraint violation)
                 if (singleError.code === '23505' && singleError.message?.includes('mobile')) {
-                  // Try to find and update by email instead
-                  const { data: existing } = await supabaseAdmin
-                    .from('members')
-                    .select('id')
-                    .eq('email', member.email)
-                    .maybeSingle();
-                  
-                  if (existing) {
-                    // Update existing by email
-                    const { data: updated, error: updateError } = await supabaseAdmin
-                      .from('members')
-                      .update(member)
-                      .eq('id', existing.id)
-                      .select()
-                      .single();
-                    
-                    if (!updateError && updated) {
-                      upsertedMembers.push(updated);
-                    } else if (updateError) {
-                      insertErrors.push({
-                        row: i + j + 2,
-                        name: member.name,
-                        email: member.email,
-                        mobile: member.mobile,
-                        error: updateError.message || 'Update failed'
-                      });
-                    }
-                  } else {
-                    insertErrors.push({
-                      row: i + j + 2,
-                      name: member.name,
-                      email: member.email,
-                      mobile: member.mobile,
-                      error: singleError.message || 'Upsert failed'
-                    });
-                  }
+                  // Mobile already exists - this should have been caught earlier, but handle gracefully
+                  insertErrors.push({
+                    row: i + j + 2,
+                    name: member.name,
+                    email: member.email,
+                    mobile: member.mobile,
+                    error: 'Mobile number already exists in database (unique constraint violation)'
+                  });
                 } else {
                   insertErrors.push({
                     row: i + j + 2,
@@ -662,7 +634,7 @@ export async function POST(request: NextRequest) {
       success: true,
       imported: totalUpserted,
       updated: totalUpserted, // All upserted records (both new and updated)
-      skipped: skipped.length, // Only email/mobile duplicates
+      skipped: skipped.length, // Only mobile duplicates
       total: data.length,
       errors: allErrors.length > 0 ? allErrors : undefined,
       skippedDetails: skipped.length > 0 ? skipped.slice(0, 20) : undefined, // Show first 20 skipped for reference
