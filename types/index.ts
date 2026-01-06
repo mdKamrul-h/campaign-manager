@@ -6,8 +6,12 @@ export interface Member {
   mobile: string;
   membership_type: string;
   batch?: string;
+  group?: string;
+  roll_no?: string;
   image_url?: string;
   blood_group?: string;
+  birthday_month?: number;
+  birthday_day?: number;
   higher_study_1?: string;
   hs_1_institute?: string;
   higher_study_2?: string;
@@ -20,6 +24,7 @@ export interface Member {
   profession?: string;
   nrb_country?: string;
   living_in_area?: string;
+  job_location?: string;
   other_club_member?: string;
   remarks?: string;
   created_at: string;

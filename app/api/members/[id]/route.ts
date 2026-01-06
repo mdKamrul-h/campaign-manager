@@ -13,9 +13,13 @@ export async function PUT(
       email, 
       mobile, 
       membership_type, 
-      batch, 
+      batch,
+      group,
+      roll_no,
       image_url,
       blood_group,
+      birthday_month,
+      birthday_day,
       higher_study_1,
       hs_1_institute,
       higher_study_2,
@@ -28,6 +32,7 @@ export async function PUT(
       profession,
       nrb_country,
       living_in_area,
+      job_location,
       other_club_member,
       remarks
     } = body;
@@ -48,8 +53,12 @@ export async function PUT(
         mobile: mobile.trim(),
         membership_type,
         batch: batch?.trim() || null,
+        group: group?.trim() || null,
+        roll_no: roll_no?.trim() || null,
         image_url: image_url || null,
         blood_group: blood_group?.trim() || null,
+        birthday_month: birthday_month ? parseInt(birthday_month) : null,
+        birthday_day: birthday_day ? parseInt(birthday_day) : null,
         higher_study_1: higher_study_1?.trim() || null,
         hs_1_institute: hs_1_institute?.trim() || null,
         higher_study_2: higher_study_2?.trim() || null,
@@ -62,6 +71,7 @@ export async function PUT(
         profession: profession?.trim() || null,
         nrb_country: nrb_country?.trim() || null,
         living_in_area: living_in_area?.trim() || null,
+        job_location: job_location?.trim() || null,
         other_club_member: other_club_member?.trim() || null,
         remarks: remarks?.trim() || null
       })

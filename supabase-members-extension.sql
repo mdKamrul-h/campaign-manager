@@ -57,7 +57,7 @@ END $$;
 -- Add unique constraint on mobile (if it doesn't exist)
 -- Note: If multiple people can share the same mobile number, you may want to skip this
 -- Uncomment the following block if you want mobile to be unique:
-/*
+
 DO $$ 
 BEGIN
     IF NOT EXISTS (
@@ -70,7 +70,7 @@ BEGIN
         RAISE NOTICE 'Unique constraint on mobile already exists';
     END IF;
 END $$;
-*/
+
 
 -- Create indexes for faster duplicate lookups (if they don't exist)
 CREATE INDEX IF NOT EXISTS idx_members_email ON members(email);

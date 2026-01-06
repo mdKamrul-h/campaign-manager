@@ -20,6 +20,7 @@ export default function MembersPage() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<{ 
     imported: number; 
+    updated?: number;
     skipped?: number;
     total?: number;
     errors?: any[]; 
@@ -33,7 +34,11 @@ export default function MembersPage() {
     mobile: '',
     membership_type: '',
     batch: '',
+    group: '',
+    roll_no: '',
     blood_group: '',
+    birthday_month: '',
+    birthday_day: '',
     higher_study_1: '',
     hs_1_institute: '',
     higher_study_2: '',
@@ -46,6 +51,7 @@ export default function MembersPage() {
     profession: '',
     nrb_country: '',
     living_in_area: '',
+    job_location: '',
     other_club_member: '',
     remarks: '',
     image_url: '',
@@ -113,7 +119,10 @@ export default function MembersPage() {
           member?.mobile?.includes(searchTerm) ||
           member?.membership_type?.toLowerCase().includes(searchLower) ||
           member?.batch?.toLowerCase().includes(searchLower) ||
+          member?.group?.toLowerCase().includes(searchLower) ||
+          member?.roll_no?.toLowerCase().includes(searchLower) ||
           member?.blood_group?.toLowerCase().includes(searchLower) ||
+          member?.job_location?.toLowerCase().includes(searchLower) ||
           member?.higher_study_1?.toLowerCase().includes(searchLower) ||
           member?.hs_1_institute?.toLowerCase().includes(searchLower) ||
           member?.higher_study_2?.toLowerCase().includes(searchLower) ||
@@ -237,7 +246,11 @@ export default function MembersPage() {
       mobile: member.mobile,
       membership_type: member.membership_type,
       batch: member.batch || '',
+      group: member.group || '',
+      roll_no: member.roll_no || '',
       blood_group: member.blood_group || '',
+      birthday_month: member.birthday_month?.toString() || '',
+      birthday_day: member.birthday_day?.toString() || '',
       higher_study_1: member.higher_study_1 || '',
       hs_1_institute: member.hs_1_institute || '',
       higher_study_2: member.higher_study_2 || '',
@@ -250,6 +263,7 @@ export default function MembersPage() {
       profession: member.profession || '',
       nrb_country: member.nrb_country || '',
       living_in_area: member.living_in_area || '',
+      job_location: member.job_location || '',
       other_club_member: member.other_club_member || '',
       remarks: member.remarks || '',
       image_url: member.image_url || '',
@@ -269,7 +283,11 @@ export default function MembersPage() {
       mobile: '',
       membership_type: '',
       batch: '',
+      group: '',
+      roll_no: '',
       blood_group: '',
+      birthday_month: '',
+      birthday_day: '',
       higher_study_1: '',
       hs_1_institute: '',
       higher_study_2: '',
@@ -282,6 +300,7 @@ export default function MembersPage() {
       profession: '',
       nrb_country: '',
       living_in_area: '',
+      job_location: '',
       other_club_member: '',
       remarks: '',
       image_url: '',
@@ -373,7 +392,11 @@ export default function MembersPage() {
       'Mobile',
       'Membership Type',
       'Batch',
+      'Group',
+      'Roll No',
       'Blood Group',
+      'Birthday Month',
+      'Birthday Day',
       'Higher Study 1',
       'HS 1 Institute',
       'Higher Study 2',
@@ -386,6 +409,7 @@ export default function MembersPage() {
       'Profession',
       'NRB Country',
       'Living in Area',
+      'Job Location',
       'Other Club Member',
       'Remarks',
       'Image URL'
@@ -412,7 +436,11 @@ export default function MembersPage() {
         escapeCSV(member.mobile),
         escapeCSV(member.membership_type),
         escapeCSV(member.batch),
+        escapeCSV(member.group),
+        escapeCSV(member.roll_no),
         escapeCSV(member.blood_group),
+        escapeCSV(member.birthday_month),
+        escapeCSV(member.birthday_day),
         escapeCSV(member.higher_study_1),
         escapeCSV(member.hs_1_institute),
         escapeCSV(member.higher_study_2),
@@ -425,6 +453,7 @@ export default function MembersPage() {
         escapeCSV(member.profession),
         escapeCSV(member.nrb_country),
         escapeCSV(member.living_in_area),
+        escapeCSV(member.job_location),
         escapeCSV(member.other_club_member),
         escapeCSV(member.remarks),
         escapeCSV(member.image_url)
@@ -610,7 +639,16 @@ export default function MembersPage() {
                   Batch
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Group
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Roll No
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Blood Group
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Birthday
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Higher Study 1
@@ -647,6 +685,9 @@ export default function MembersPage() {
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Living in Area
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Job Location
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Other Club
@@ -709,7 +750,18 @@ export default function MembersPage() {
                       {member.batch || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {member.group || '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {member.roll_no || '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {member.blood_group || '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {member.birthday_month && member.birthday_day 
+                        ? `${member.birthday_month}/${member.birthday_day}` 
+                        : '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {member.higher_study_1 || '-'}
@@ -746,6 +798,9 @@ export default function MembersPage() {
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {member.living_in_area || '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {member.job_location || '-'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                       {member.other_club_member || '-'}
@@ -882,6 +937,34 @@ export default function MembersPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Group
+                </label>
+                <input
+                  type="text"
+                  value={formData.group}
+                  onChange={(e) =>
+                    setFormData({ ...formData, group: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Enter group (optional)"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Roll No
+                </label>
+                <input
+                  type="text"
+                  value={formData.roll_no}
+                  onChange={(e) =>
+                    setFormData({ ...formData, roll_no: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Enter roll number (optional)"
+                />
+              </div>
 
               {/* Image Upload Section */}
               <div>
@@ -938,6 +1021,50 @@ export default function MembersPage() {
                     <option value="O+">O+</option>
                     <option value="O-">O-</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Birthday Month
+                  </label>
+                  <select
+                    value={formData.birthday_month}
+                    onChange={(e) =>
+                      setFormData({ ...formData, birthday_month: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="">Select Month</option>
+                    <option value="1">January</option>
+                    <option value="2">February</option>
+                    <option value="3">March</option>
+                    <option value="4">April</option>
+                    <option value="5">May</option>
+                    <option value="6">June</option>
+                    <option value="7">July</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Birthday Day
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={formData.birthday_day}
+                    onChange={(e) =>
+                      setFormData({ ...formData, birthday_day: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Day (1-31)"
+                  />
                 </div>
 
                 <div>
@@ -1120,6 +1247,21 @@ export default function MembersPage() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Job Location
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.job_location}
+                    onChange={(e) =>
+                      setFormData({ ...formData, job_location: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Job location"
+                  />
+                </div>
+
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Other Club Member
@@ -1225,11 +1367,16 @@ export default function MembersPage() {
               }`}>
                 <div className="space-y-2">
                   <p className="font-semibold text-green-700">
-                    ✓ {importResult.imported || 0} members imported successfully
+                    ✓ {importResult.imported || 0} members processed successfully
+                    {importResult.updated && importResult.updated > 0 && (
+                      <span className="text-sm font-normal text-gray-600 ml-2">
+                        ({importResult.updated} updated, {importResult.imported - importResult.updated} new)
+                      </span>
+                    )}
                   </p>
                   {importResult.skipped && importResult.skipped > 0 && (
                     <p className="text-sm text-gray-700">
-                      ⚠ {importResult.skipped} members skipped (duplicates found)
+                      ⚠ {importResult.skipped} members skipped (duplicates within file)
                     </p>
                   )}
                   {importResult.total && (

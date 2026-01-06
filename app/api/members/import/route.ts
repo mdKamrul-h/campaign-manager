@@ -43,6 +43,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get available columns and create a case-insensitive lookup
+    const availableColumns = data.length > 0 ? Object.keys(data[0]) : [];
+    const columnMap = new Map<string, string>();
+    availableColumns.forEach(col => {
+      columnMap.set(col.toLowerCase().trim(), col);
+    });
+    
+    // Log available columns for debugging
+    console.log('Available columns in file:', availableColumns);
+
     // Fetch existing members to check for duplicates
     // We'll check by email (primary) and mobile (secondary)
     const { data: existingMembers } = await supabaseAdmin
@@ -71,20 +81,107 @@ export async function POST(request: NextRequest) {
       const rowNumber = i + 2; // +2 because Excel rows start at 1 and we skip header
 
       try {
+        // Helper function to get value from row with multiple column name variations (case-insensitive)
+        const getValue = (variations: string[]): string => {
+          // First try direct matches (exact column names)
+          for (const variation of variations) {
+            // Try exact match
+            const value = row[variation];
+            if (value !== undefined && value !== null && value !== '') {
+              return String(value).trim();
+            }
+            
+            // Try case-insensitive match via columnMap
+            const normalized = variation.toLowerCase().trim();
+            if (columnMap.has(normalized)) {
+              const actualCol = columnMap.get(normalized)!;
+              const value2 = row[actualCol];
+              if (value2 !== undefined && value2 !== null && value2 !== '') {
+                return String(value2).trim();
+              }
+            }
+          }
+          
+          // Try partial/fuzzy matching (contains)
+          for (const variation of variations) {
+            const normalized = variation.toLowerCase().trim();
+            for (const [key, actualCol] of columnMap.entries()) {
+              if (key.includes(normalized) || normalized.includes(key)) {
+                const value = row[actualCol];
+                if (value !== undefined && value !== null && value !== '') {
+                  return String(value).trim();
+                }
+              }
+            }
+          }
+          return '';
+        };
+
         // Map Excel columns to member fields
-        // Support various column name variations
-        const name = row['Name'] || row['name'] || row['Full Name'] || row['FullName'] || '';
-        const email = row['Email'] || row['email'] || row['E-mail'] || '';
-        const mobile = row['Mobile'] || row['mobile'] || row['Phone'] || row['phone'] || row['Phone Number'] || '';
-        const membershipType = (row['Membership Type'] || row['membership_type'] || row['Membership'] || row['Type'] || 'GM').toString().toUpperCase();
-        const batch = row['Batch'] || row['batch'] || '';
-        const imageUrl = row['Image URL'] || row['image_url'] || row['Image'] || row['Photo'] || '';
+        // Support various column name variations (case-insensitive, with/without spaces)
+        const name = getValue([
+          'Name', 'name', 'NAME', 'Full Name', 'FullName', 'full name', 'FULL NAME',
+          'Name (English)', 'Name(English)', 'name_english', 'Member Name', 'member name'
+        ]);
+        
+        const email = getValue([
+          'Email', 'email', 'EMAIL', 'E-mail', 'E-Mail', 'e-mail', 'E-MAIL',
+          'Email Address', 'email address', 'EMAIL ADDRESS', 'e_mail', 'E_MAIL'
+        ]);
+        
+        const mobile = getValue([
+          'Mobile', 'mobile', 'MOBILE', 'Phone', 'phone', 'PHONE',
+          'Phone Number', 'phone number', 'PHONE NUMBER', 'Mobile Number', 'mobile number',
+          'Contact', 'contact', 'CONTACT', 'Cell', 'cell', 'CELL'
+        ]);
+        
+        const membershipTypeRaw = getValue([
+          'Membership Type', 'membership_type', 'Membership', 'membership', 'MEMBERSHIP',
+          'Type', 'type', 'TYPE', 'MembershipType', 'membershipType', 'Member Type'
+        ]);
+        const membershipType = membershipTypeRaw ? membershipTypeRaw.toUpperCase() : 'GM';
+        
+        const batch = getValue([
+          'Batch', 'batch', 'BATCH', 'Batch Number', 'batch number', 'Batch No', 'batch_no'
+        ]);
+        
+        const imageUrl = getValue([
+          'Image URL', 'image_url', 'Image', 'image', 'Photo', 'photo', 'Photo URL', 'photo_url',
+          'Picture', 'picture', 'Profile Picture', 'profile_picture'
+        ]);
 
         // Validate required fields
         if (!name || !email || !mobile) {
+          const missingFields = [];
+          if (!name) missingFields.push('Name');
+          if (!email) missingFields.push('Email');
+          if (!mobile) missingFields.push('Mobile');
+          
+          // If email is missing, provide helpful info about available columns
+          let errorMsg = `Missing required fields: ${missingFields.join(', ')}`;
+          if (!email && rowNumber === 2) {
+            // Only show column info for first error row to avoid spam
+            errorMsg += `. Available columns: ${availableColumns.join(', ')}`;
+          }
+          
           errors.push({
             row: rowNumber,
-            error: `Missing required fields: ${!name ? 'Name' : ''} ${!email ? 'Email' : ''} ${!mobile ? 'Mobile' : ''}`.trim()
+            name: name || '(empty)',
+            email: email || '(empty)',
+            mobile: mobile || '(empty)',
+            error: errorMsg
+          });
+          continue;
+        }
+        
+        // Additional validation: check if email format is valid (basic check)
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          errors.push({
+            row: rowNumber,
+            name: name,
+            email: email,
+            error: `Invalid email format: ${email}`
           });
           continue;
         }
@@ -153,7 +250,11 @@ export async function POST(request: NextRequest) {
 
         // Map additional fields from CSV/Excel
         const nameBangla = row['Name (Bangla)'] || row['name_bangla'] || row['Name Bangla'] || '';
+        const group = row['Group'] || row['group'] || '';
+        const rollNo = row['Roll No'] || row['roll_no'] || row['Roll No.'] || row['Roll Number'] || '';
         const bloodGroup = row['Blood Group'] || row['blood_group'] || '';
+        const birthdayMonth = row['Birthday Month'] || row['birthday_month'] || row['Birth Month'] || '';
+        const birthdayDay = row['Birthday Day'] || row['birthday_day'] || row['Birth Day'] || '';
         const higherStudy1 = row['Higher Study 1'] || row['higher_study_1'] || '';
         const hs1Institute = row['HS 1 Institute'] || row['hs_1_institute'] || '';
         const higherStudy2 = row['Higher Study 2'] || row['higher_study_2'] || '';
@@ -166,6 +267,7 @@ export async function POST(request: NextRequest) {
         const profession = row['Profession'] || row['profession'] || '';
         const nrbCountry = row['NRB Country'] || row['nrb_country'] || '';
         const livingInArea = row['Living in Area'] || row['living_in_area'] || '';
+        const jobLocation = row['Job Location'] || row['job_location'] || '';
         const otherClubMember = row['Other Club Member'] || row['other_club_member'] || '';
         const remarks = row['Remarks'] || row['remarks'] || '';
 
@@ -176,8 +278,12 @@ export async function POST(request: NextRequest) {
           mobile: mobile.toString().trim(),
           membership_type,
           batch: batch ? batch.toString().trim() : null,
+          group: group ? group.toString().trim() : null,
+          roll_no: rollNo ? rollNo.toString().trim() : null,
           image_url: finalImageUrl || null,
           blood_group: bloodGroup ? bloodGroup.toString().trim() : null,
+          birthday_month: birthdayMonth ? parseInt(birthdayMonth.toString()) : null,
+          birthday_day: birthdayDay ? parseInt(birthdayDay.toString()) : null,
           higher_study_1: higherStudy1 ? higherStudy1.toString().trim() : null,
           hs_1_institute: hs1Institute ? hs1Institute.toString().trim() : null,
           higher_study_2: higherStudy2 ? higherStudy2.toString().trim() : null,
@@ -190,6 +296,7 @@ export async function POST(request: NextRequest) {
           profession: profession ? profession.toString().trim() : null,
           nrb_country: nrbCountry ? nrbCountry.toString().trim() : null,
           living_in_area: livingInArea ? livingInArea.toString().trim() : null,
+          job_location: jobLocation ? jobLocation.toString().trim() : null,
           other_club_member: otherClubMember ? otherClubMember.toString().trim() : null,
           remarks: remarks ? remarks.toString().trim() : null
         });
@@ -217,64 +324,129 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Insert members one by one to handle constraint violations gracefully
-    // This allows us to identify which specific member caused the issue
-    const insertedMembers = [];
+    // Upsert members (update if exists, insert if new)
+    // Use mobile as the conflict key since it has a unique constraint
+    const upsertedMembers = [];
     const insertErrors = [];
     
-    for (let i = 0; i < members.length; i++) {
-      const member = members[i];
-      const { data: inserted, error: insertError } = await supabaseAdmin
-        .from('members')
-        .insert([member])
-        .select()
-        .single();
+    // Process in batches for better performance
+    const batchSize = 50; // Smaller batches for more reliable upserts
+    for (let i = 0; i < members.length; i += batchSize) {
+      const batch = members.slice(i, i + batchSize);
+      
+      try {
+        // Use upsert to update existing records or insert new ones
+        // Mobile is used as the conflict resolution key
+        const { data: upserted, error: upsertError } = await supabaseAdmin
+          .from('members')
+          .upsert(batch, {
+            onConflict: 'mobile',
+            ignoreDuplicates: false
+          })
+          .select();
 
-      if (insertError) {
-        // Check if it's a unique constraint violation
-        if (insertError.code === '23505' || insertError.message?.includes('unique constraint')) {
-          // Extract which field caused the violation
-          let reason = 'Duplicate entry';
-          if (insertError.message?.includes('email')) {
-            reason = 'Email already exists';
-          } else if (insertError.message?.includes('mobile')) {
-            reason = 'Mobile already exists';
+        if (upsertError) {
+          console.error(`Batch upsert error (rows ${i + 2}-${i + batch.length + 1}):`, upsertError);
+          
+          // If batch fails, try one by one
+          for (let j = 0; j < batch.length; j++) {
+            const member = batch[j];
+            try {
+              const { data: singleUpserted, error: singleError } = await supabaseAdmin
+                .from('members')
+                .upsert([member], {
+                  onConflict: 'mobile',
+                  ignoreDuplicates: false
+                })
+                .select()
+                .single();
+
+              if (singleError) {
+                // If mobile conflict fails, try email as fallback
+                if (singleError.code === '23505' && singleError.message?.includes('mobile')) {
+                  // Try to find and update by email instead
+                  const { data: existing } = await supabaseAdmin
+                    .from('members')
+                    .select('id')
+                    .eq('email', member.email)
+                    .maybeSingle();
+                  
+                  if (existing) {
+                    // Update existing by email
+                    const { data: updated, error: updateError } = await supabaseAdmin
+                      .from('members')
+                      .update(member)
+                      .eq('id', existing.id)
+                      .select()
+                      .single();
+                    
+                    if (!updateError && updated) {
+                      upsertedMembers.push(updated);
+                    } else if (updateError) {
+                      insertErrors.push({
+                        row: i + j + 2,
+                        name: member.name,
+                        email: member.email,
+                        mobile: member.mobile,
+                        error: updateError.message || 'Update failed'
+                      });
+                    }
+                  } else {
+                    insertErrors.push({
+                      row: i + j + 2,
+                      name: member.name,
+                      email: member.email,
+                      mobile: member.mobile,
+                      error: singleError.message || 'Upsert failed'
+                    });
+                  }
+                } else {
+                  insertErrors.push({
+                    row: i + j + 2,
+                    name: member.name,
+                    email: member.email,
+                    mobile: member.mobile,
+                    error: singleError.message || 'Upsert failed'
+                  });
+                }
+              } else if (singleUpserted) {
+                upsertedMembers.push(singleUpserted);
+              }
+            } catch (err: any) {
+              insertErrors.push({
+                row: i + j + 2,
+                name: member.name,
+                email: member.email,
+                mobile: member.mobile,
+                error: err.message || 'Unexpected error'
+              });
+            }
           }
-          
-          skipped.push({
-            row: i + 2, // Approximate row number
-            name: member.name,
-            email: member.email,
-            mobile: member.mobile,
-            reason: reason
-          });
-          
-          // Add to existing sets to prevent retrying
-          existingEmails.add(member.email?.toLowerCase().trim() || '');
-          existingMobiles.add(member.mobile?.trim() || '');
-        } else {
-          insertErrors.push({
-            row: i + 2,
-            name: member.name,
-            email: member.email,
-            error: insertError.message || 'Insert failed'
-          });
+        } else if (upserted) {
+          upsertedMembers.push(...upserted);
         }
-      } else if (inserted) {
-        insertedMembers.push(inserted);
-        // Add to existing sets to prevent duplicates in subsequent inserts
-        existingEmails.add(member.email?.toLowerCase().trim() || '');
-        existingMobiles.add(member.mobile?.trim() || '');
+      } catch (batchError: any) {
+        console.error(`Batch processing error:`, batchError);
+        insertErrors.push({
+          row: i + 2,
+          error: batchError.message || 'Batch processing failed'
+        });
       }
     }
 
-    // Combine validation errors with insert errors
+    // Combine validation errors with upsert errors
     const allErrors = [...errors, ...insertErrors];
+    
+    // Calculate updated vs inserted
+    // Note: Supabase upsert doesn't distinguish between insert/update in response
+    // So we'll show total upserted (which includes both new and updated)
+    const totalUpserted = upsertedMembers.length;
     
     return NextResponse.json({
       success: true,
-      imported: insertedMembers.length,
-      skipped: skipped.length,
+      imported: totalUpserted,
+      updated: totalUpserted, // All upserted records (both new and updated)
+      skipped: skipped.length, // Only validation duplicates within file
       total: data.length,
       errors: allErrors.length > 0 ? allErrors : undefined,
       skippedDetails: skipped.length > 0 ? skipped.slice(0, 20) : undefined // Show first 20 skipped for reference
