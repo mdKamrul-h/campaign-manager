@@ -6,6 +6,24 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const includeDuplicateNames = formData.get('includeDuplicateNames') === 'true';
+    const editedDuplicateNamesJson = formData.get('editedDuplicateNames') as string | null;
+    const editedDuplicateNames: Map<number, { name?: string; email?: string; mobile?: string }> = new Map();
+    
+    if (editedDuplicateNamesJson) {
+      try {
+        const edited = JSON.parse(editedDuplicateNamesJson) as Array<{ row: number; name?: string; email?: string; mobile?: string }>;
+        edited.forEach(edit => {
+          editedDuplicateNames.set(edit.row, {
+            name: edit.name,
+            email: edit.email,
+            mobile: edit.mobile
+          });
+        });
+      } catch (e) {
+        console.error('Error parsing edited duplicate names:', e);
+      }
+    }
 
     if (!file) {
       return NextResponse.json(
@@ -70,11 +88,14 @@ export async function POST(request: NextRequest) {
     const members = [];
     const errors = [];
     const skipped = [];
+    const duplicateNames = []; // Track duplicate names separately
     const imageUploadPromises = [];
     
     // Track emails and mobiles within the current file to prevent duplicates in the same import
     const fileEmails = new Set<string>();
     const fileMobiles = new Set<string>();
+    // Track names within the file to detect duplicates
+    const fileNames = new Map<string, number>(); // name -> row number (first occurrence)
 
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
@@ -185,33 +206,82 @@ export async function POST(request: NextRequest) {
           });
           continue;
         }
-
-        // Normalize email and mobile
-        const emailLower = email.toString().trim().toLowerCase();
-        const mobileTrimmed = mobile.toString().trim();
         
-        // Check for duplicates in database
-        if (existingEmails.has(emailLower) || existingMobiles.has(mobileTrimmed)) {
+        // Check if this row has been edited (for duplicate names) - do this before final validation
+        const editedData = editedDuplicateNames.get(rowNumber);
+        if (editedData && editedData.email) {
+          // Validate edited email format
+          if (!emailRegex.test(editedData.email)) {
+            errors.push({
+              row: rowNumber,
+              name: name,
+              email: editedData.email,
+              error: `Invalid email format in edited data: ${editedData.email}`
+            });
+            continue;
+          }
+        }
+
+        // Normalize name
+        const nameTrimmed = name.toString().trim();
+        
+        // Check if this row has been edited (for duplicate names)
+        const editedData = editedDuplicateNames.get(rowNumber);
+        let finalName = nameTrimmed;
+        let finalEmail = email.toString().trim();
+        let finalMobile = mobile.toString().trim();
+        
+        if (editedData) {
+          // Use edited values if provided
+          if (editedData.name) finalName = editedData.name.trim();
+          if (editedData.email) finalEmail = editedData.email.trim();
+          if (editedData.mobile) finalMobile = editedData.mobile.trim();
+        }
+
+        // Normalize final values for duplicate checking
+        const finalEmailLower = finalEmail.toLowerCase();
+        const finalMobileTrimmed = finalMobile.trim();
+        
+        // Check for duplicates in database (ONLY email and mobile) - using final values
+        if (existingEmails.has(finalEmailLower) || existingMobiles.has(finalMobileTrimmed)) {
           skipped.push({
             row: rowNumber,
-            name: name.toString().trim(),
-            email: email.toString().trim(),
-            mobile: mobileTrimmed,
-            reason: existingEmails.has(emailLower) ? 'Email already exists in database' : 'Mobile already exists in database'
+            name: finalName,
+            email: finalEmail,
+            mobile: finalMobileTrimmed,
+            reason: existingEmails.has(finalEmailLower) ? 'Email already exists in database' : 'Mobile already exists in database'
           });
           continue;
         }
         
-        // Check for duplicates within the same file
-        if (fileEmails.has(emailLower) || fileMobiles.has(mobileTrimmed)) {
+        // Check for duplicates within the same file (ONLY email and mobile) - using final values
+        if (fileEmails.has(finalEmailLower) || fileMobiles.has(finalMobileTrimmed)) {
           skipped.push({
             row: rowNumber,
-            name: name.toString().trim(),
-            email: email.toString().trim(),
-            mobile: mobileTrimmed,
-            reason: fileEmails.has(emailLower) ? 'Duplicate email in this file' : 'Duplicate mobile in this file'
+            name: finalName,
+            email: finalEmail,
+            mobile: finalMobileTrimmed,
+            reason: fileEmails.has(finalEmailLower) ? 'Duplicate email in this file' : 'Duplicate mobile in this file'
           });
           continue;
+        }
+
+        // Check for duplicate names (but don't skip - just track for user confirmation)
+        const isDuplicateName = fileNames.has(finalName);
+        if (isDuplicateName && !includeDuplicateNames) {
+          duplicateNames.push({
+            row: rowNumber,
+            name: finalName,
+            email: finalEmail,
+            mobile: finalMobileTrimmed,
+            firstOccurrenceRow: fileNames.get(finalName) || rowNumber,
+            reason: 'Duplicate name found in this file'
+          });
+          // Skip adding this member to the array until user confirms
+          continue;
+        } else if (!isDuplicateName) {
+          // First occurrence of this name
+          fileNames.set(finalName, rowNumber);
         }
 
         // Validate membership type
@@ -272,10 +342,10 @@ export async function POST(request: NextRequest) {
         const remarks = row['Remarks'] || row['remarks'] || '';
 
         members.push({
-          name: name.toString().trim(),
+          name: finalName,
           name_bangla: nameBangla ? nameBangla.toString().trim() : null,
-          email: email.toString().trim(),
-          mobile: mobile.toString().trim(),
+          email: finalEmail,
+          mobile: finalMobileTrimmed,
           membership_type,
           batch: batch ? batch.toString().trim() : null,
           group: group ? group.toString().trim() : null,
@@ -301,15 +371,56 @@ export async function POST(request: NextRequest) {
           remarks: remarks ? remarks.toString().trim() : null
         });
 
-        // Add to file sets to prevent duplicates within the same import
-        fileEmails.add(emailLower);
-        fileMobiles.add(mobileTrimmed);
+        // Add to file sets to prevent duplicates within the same import (use final values)
+        fileEmails.add(finalEmailLower);
+        fileMobiles.add(finalMobileTrimmed);
       } catch (rowError: any) {
         errors.push({
           row: rowNumber,
           error: rowError.message || 'Invalid row data'
         });
       }
+    }
+
+    // If there are duplicate names and user hasn't confirmed to include them, 
+    // import valid members first, then return duplicate names for confirmation
+    if (duplicateNames.length > 0 && !includeDuplicateNames) {
+      // Import valid members (non-duplicates) first
+      let validMembersImported = 0;
+      if (members.length > 0) {
+        const batchSize = 50;
+        for (let i = 0; i < members.length; i += batchSize) {
+          const batch = members.slice(i, i + batchSize);
+          try {
+            const { data: upserted, error: upsertError } = await supabaseAdmin
+              .from('members')
+              .upsert(batch, {
+                onConflict: 'mobile',
+                ignoreDuplicates: false
+              })
+              .select();
+
+            if (!upsertError && upserted) {
+              validMembersImported += upserted.length;
+            }
+          } catch (err) {
+            console.error('Error importing valid members:', err);
+          }
+        }
+      }
+
+      return NextResponse.json(
+        { 
+          requiresConfirmation: true,
+          duplicateNames: duplicateNames,
+          message: `Found ${duplicateNames.length} duplicate name(s) in the file. Do you want to include them?`,
+          validMembersCount: members.length,
+          validMembersImported: validMembersImported,
+          errors: errors.length > 0 ? errors : undefined,
+          skipped: skipped.length > 0 ? skipped : undefined
+        },
+        { status: 200 }
+      );
     }
 
     if (members.length === 0) {
@@ -446,10 +557,11 @@ export async function POST(request: NextRequest) {
       success: true,
       imported: totalUpserted,
       updated: totalUpserted, // All upserted records (both new and updated)
-      skipped: skipped.length, // Only validation duplicates within file
+      skipped: skipped.length, // Only email/mobile duplicates
       total: data.length,
       errors: allErrors.length > 0 ? allErrors : undefined,
-      skippedDetails: skipped.length > 0 ? skipped.slice(0, 20) : undefined // Show first 20 skipped for reference
+      skippedDetails: skipped.length > 0 ? skipped.slice(0, 20) : undefined, // Show first 20 skipped for reference
+      duplicateNamesIncluded: includeDuplicateNames ? duplicateNames.length : 0
     });
   } catch (error: any) {
     console.error('Import error:', error);

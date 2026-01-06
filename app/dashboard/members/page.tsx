@@ -25,7 +25,14 @@ export default function MembersPage() {
     total?: number;
     errors?: any[]; 
     skippedDetails?: Array<{ row: number; name: string; email: string; mobile?: string; reason: string }>;
+    requiresConfirmation?: boolean;
+    duplicateNames?: Array<{ row: number; name: string; email: string; mobile: string; firstOccurrenceRow: number; reason: string }>;
+    message?: string;
+    validMembersCount?: number;
   } | null>(null);
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
+  const [editingDuplicateName, setEditingDuplicateName] = useState<number | null>(null);
+  const [editedDuplicateNames, setEditedDuplicateNames] = useState<Array<{ row: number; name: string; email: string; mobile: string; firstOccurrenceRow: number; reason: string }>>([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -309,18 +316,26 @@ export default function MembersPage() {
     setImagePreview('');
   };
 
-  const handleImport = async () => {
-    if (!importFile) {
+  const handleImport = async (includeDuplicateNames: boolean = false) => {
+    const fileToImport = includeDuplicateNames ? pendingImportFile : importFile;
+    
+    if (!fileToImport) {
       alert('Please select a file');
       return;
     }
 
     setImporting(true);
-    setImportResult(null);
+    if (!includeDuplicateNames) {
+      setImportResult(null);
+      setPendingImportFile(fileToImport); // Store file for potential re-import
+    }
 
     try {
       const formData = new FormData();
-      formData.append('file', importFile);
+      formData.append('file', fileToImport);
+      if (includeDuplicateNames) {
+        formData.append('includeDuplicateNames', 'true');
+      }
 
       const response = await fetch('/api/members/import', {
         method: 'POST',
@@ -330,6 +345,13 @@ export default function MembersPage() {
       const result = await response.json();
 
       if (response.ok) {
+        // Check if confirmation is required for duplicate names
+        if (result.requiresConfirmation && !includeDuplicateNames) {
+          setImportResult(result);
+          setImporting(false);
+          return; // Don't close modal, show confirmation dialog
+        }
+
         setImportResult(result);
         await refreshMembers(); // Refresh members from context
         await fetchBatches(); // Also refresh batches
@@ -340,6 +362,7 @@ export default function MembersPage() {
         setTimeout(() => {
           setShowImportModal(false);
           setImportFile(null);
+          setPendingImportFile(null);
           setImportResult(null);
         }, 3000);
       } else {
@@ -352,6 +375,94 @@ export default function MembersPage() {
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleConfirmDuplicateNames = () => {
+    if (pendingImportFile) {
+      handleImport(true); // Re-import with includeDuplicateNames flag
+    }
+  };
+
+  const handleEditAndIncludeDuplicateNames = async () => {
+    if (!pendingImportFile || !importResult?.duplicateNames) return;
+
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', pendingImportFile);
+      formData.append('includeDuplicateNames', 'true');
+      formData.append('editedDuplicateNames', JSON.stringify(editedDuplicateNames));
+
+      const response = await fetch('/api/members/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setImportResult(result);
+        await refreshMembers();
+        await fetchBatches();
+        window.dispatchEvent(new CustomEvent('memberUpdated'));
+        
+        setTimeout(() => {
+          setShowImportModal(false);
+          setImportFile(null);
+          setPendingImportFile(null);
+          setImportResult(null);
+          setEditedDuplicateNames([]);
+          setEditingDuplicateName(null);
+        }, 3000);
+      } else {
+        alert(result.error || 'Failed to import members');
+        setImportResult(result);
+      }
+    } catch (error) {
+      console.error('Import error:', error);
+      alert('Failed to import members');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleEditDuplicateName = (index: number, field: string, value: string) => {
+    if (!importResult?.duplicateNames) return;
+    
+    const updated = [...editedDuplicateNames];
+    const existing = updated.find(d => d.row === importResult.duplicateNames![index].row);
+    
+    if (existing) {
+      (existing as any)[field] = value;
+    } else {
+      updated.push({
+        ...importResult.duplicateNames[index],
+        [field]: value
+      });
+    }
+    
+    setEditedDuplicateNames(updated);
+  };
+
+  const getEditedDuplicateName = (index: number) => {
+    if (!importResult?.duplicateNames) return null;
+    const original = importResult.duplicateNames[index];
+    const edited = editedDuplicateNames.find(d => d.row === original.row);
+    return edited || original;
+  };
+
+  const handleSkipDuplicateNames = () => {
+    // User chose to skip duplicate names, valid members are already imported
+    // Just close the modal and refresh
+    setShowImportModal(false);
+    setImportFile(null);
+    setPendingImportFile(null);
+    setImportResult(null);
+    setEditedDuplicateNames([]);
+    setEditingDuplicateName(null);
+    refreshMembers();
+    fetchBatches();
+    window.dispatchEvent(new CustomEvent('memberUpdated'));
   };
 
   const downloadTemplate = () => {
@@ -1331,7 +1442,7 @@ export default function MembersPage() {
                 <li><strong>Membership Type</strong> - GM, LM, FM, or OTHER (defaults to GM)</li>
                 <li><strong>Batch</strong> - Batch identifier (optional)</li>
                 <li><strong>Image URL</strong> - URL or base64 image data (optional)</li>
-                <li className="mt-2"><strong>Note:</strong> Members with existing email or mobile will be automatically skipped</li>
+                <li className="mt-2"><strong>Note:</strong> Only email and mobile numbers must be unique. Duplicate names will be shown for confirmation.</li>
               </ul>
               <button
                 onClick={downloadTemplate}
@@ -1359,7 +1470,156 @@ export default function MembersPage() {
               )}
             </div>
 
-            {importResult && (
+            {importResult && importResult.requiresConfirmation && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="space-y-4">
+                  <div>
+                    <p className="font-semibold text-yellow-800 mb-2">
+                      ⚠ {importResult.message || 'Duplicate names found'}
+                    </p>
+                    <p className="text-sm text-gray-700 mb-3">
+                      Found {importResult.duplicateNames?.length || 0} duplicate name(s) in the file. 
+                      Only email and mobile numbers must be unique. Do you want to include these duplicate names?
+                    </p>
+                    {importResult.validMembersImported !== undefined && importResult.validMembersImported > 0 && (
+                      <p className="text-sm text-green-700 mb-3 font-medium">
+                        ✓ {importResult.validMembersImported} member(s) with unique email/mobile have been imported.
+                      </p>
+                    )}
+                    {importResult.validMembersCount !== undefined && (
+                      <p className="text-sm text-gray-600 mb-3">
+                        {importResult.validMembersCount} member(s) with unique email/mobile {importResult.validMembersImported ? 'were imported' : 'will be imported'}.
+                      </p>
+                    )}
+                  </div>
+                  
+                  {importResult.duplicateNames && importResult.duplicateNames.length > 0 && (
+                    <div className="max-h-60 overflow-y-auto border border-yellow-300 rounded p-3 bg-white">
+                      <p className="text-xs font-semibold text-gray-700 mb-2">Duplicate Names Found (Click to edit):</p>
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-2 py-1 text-left">Row</th>
+                            <th className="px-2 py-1 text-left">Name</th>
+                            <th className="px-2 py-1 text-left">Email</th>
+                            <th className="px-2 py-1 text-left">Mobile</th>
+                            <th className="px-2 py-1 text-left">First Seen</th>
+                            <th className="px-2 py-1 text-left">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {importResult.duplicateNames.slice(0, 20).map((dup: any, idx: number) => {
+                            const edited = getEditedDuplicateName(idx);
+                            const isEditing = editingDuplicateName === idx;
+                            
+                            return (
+                              <tr key={idx} className={`hover:bg-gray-50 ${isEditing ? 'bg-blue-50' : ''}`}>
+                                <td className="px-2 py-1">{dup.row}</td>
+                                <td className="px-2 py-1">
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={edited?.name || ''}
+                                      onChange={(e) => handleEditDuplicateName(idx, 'name', e.target.value)}
+                                      className="w-full px-1 py-0.5 border border-gray-300 rounded text-xs"
+                                      placeholder="Edit name"
+                                    />
+                                  ) : (
+                                    <span className="font-medium">{edited?.name || dup.name}</span>
+                                  )}
+                                </td>
+                                <td className="px-2 py-1">
+                                  {isEditing ? (
+                                    <input
+                                      type="email"
+                                      value={edited?.email || ''}
+                                      onChange={(e) => handleEditDuplicateName(idx, 'email', e.target.value)}
+                                      className="w-full px-1 py-0.5 border border-gray-300 rounded text-xs"
+                                      placeholder="Edit email"
+                                    />
+                                  ) : (
+                                    <span>{edited?.email || dup.email}</span>
+                                  )}
+                                </td>
+                                <td className="px-2 py-1">
+                                  {isEditing ? (
+                                    <input
+                                      type="tel"
+                                      value={edited?.mobile || ''}
+                                      onChange={(e) => handleEditDuplicateName(idx, 'mobile', e.target.value)}
+                                      className="w-full px-1 py-0.5 border border-gray-300 rounded text-xs"
+                                      placeholder="Edit mobile"
+                                    />
+                                  ) : (
+                                    <span>{edited?.mobile || dup.mobile}</span>
+                                  )}
+                                </td>
+                                <td className="px-2 py-1 text-gray-500">Row {dup.firstOccurrenceRow}</td>
+                                <td className="px-2 py-1">
+                                  {isEditing ? (
+                                    <button
+                                      onClick={() => setEditingDuplicateName(null)}
+                                      className="text-blue-600 hover:text-blue-800 text-xs"
+                                    >
+                                      Done
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => setEditingDuplicateName(idx)}
+                                      className="text-blue-600 hover:text-blue-800 text-xs"
+                                    >
+                                      Edit
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      {importResult.duplicateNames.length > 20 && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          ... and {importResult.duplicateNames.length - 20} more
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-3">
+                    <div className="flex gap-3">
+                      <button
+                        onClick={handleConfirmDuplicateNames}
+                        disabled={importing || editingDuplicateName !== null}
+                        className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:bg-blue-400"
+                      >
+                        {importing ? 'Importing...' : 'Include As-Is'}
+                      </button>
+                      <button
+                        onClick={handleEditAndIncludeDuplicateNames}
+                        disabled={importing || editingDuplicateName !== null}
+                        className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition disabled:bg-green-400"
+                      >
+                        {importing ? 'Importing...' : 'Edit & Include'}
+                      </button>
+                      <button
+                        onClick={handleSkipDuplicateNames}
+                        disabled={importing || editingDuplicateName !== null}
+                        className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition disabled:bg-gray-100"
+                      >
+                        {importing ? 'Importing...' : 'Skip'}
+                      </button>
+                    </div>
+                    {editingDuplicateName !== null && (
+                      <p className="text-xs text-blue-600 text-center">
+                        Please finish editing the current row before proceeding.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {importResult && !importResult.requiresConfirmation && (
               <div className={`mb-6 p-4 rounded-lg ${
                 importResult.errors && importResult.errors.length > 0
                   ? 'bg-yellow-50 border border-yellow-200'
@@ -1376,7 +1636,7 @@ export default function MembersPage() {
                   </p>
                   {importResult.skipped && importResult.skipped > 0 && (
                     <p className="text-sm text-gray-700">
-                      ⚠ {importResult.skipped} members skipped (duplicates within file)
+                      ⚠ {importResult.skipped} members skipped (duplicate email/mobile)
                     </p>
                   )}
                   {importResult.total && (
