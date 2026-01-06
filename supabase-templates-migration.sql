@@ -39,3 +39,4 @@ CREATE TRIGGER update_campaign_templates_updated_at
 
 
 
+

@@ -7,6 +7,16 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const includeDuplicateNames = formData.get('includeDuplicateNames') === 'true';
+    const editedDuplicatesJson = formData.get('editedDuplicates') as string | null;
+    const editedDuplicates: Array<any> = [];
+    
+    if (editedDuplicatesJson) {
+      try {
+        editedDuplicates.push(...JSON.parse(editedDuplicatesJson));
+      } catch (e) {
+        console.error('Error parsing edited duplicates:', e);
+      }
+    }
 
     if (!file) {
       return NextResponse.json(
@@ -72,11 +82,13 @@ export async function POST(request: NextRequest) {
     const errors = [];
     const skipped = [];
     const duplicateNames = []; // Track duplicate names separately
+    const duplicateEmailGroups = new Map<string, any[]>(); // email -> array of duplicate records
+    const duplicateMobileGroups = new Map<string, any[]>(); // mobile -> array of duplicate records
     const imageUploadPromises = [];
     
     // Track emails and mobiles within the current file to prevent duplicates in the same import
-    const fileEmails = new Set<string>();
-    const fileMobiles = new Set<string>();
+    const fileEmails = new Map<string, any>(); // email -> first record
+    const fileMobiles = new Map<string, any>(); // mobile -> first record
     // Track names within the file to detect duplicates
     const fileNames = new Map<string, number>(); // name -> row number (first occurrence)
 
@@ -190,34 +202,202 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Normalize email and mobile
-        const emailLower = email.toString().trim().toLowerCase();
-        const mobileTrimmed = mobile.toString().trim();
-        const nameTrimmed = name.toString().trim();
+        // Check if this row was a duplicate that was edited by user (must check BEFORE duplicate detection)
+        let emailValue = email.toString().trim();
+        let mobileValue = mobile.toString().trim();
+        let nameValue = name.toString().trim();
         
+        const editedDuplicate = editedDuplicates.find(ed => ed.row === rowNumber);
+        if (editedDuplicate) {
+          // Use edited values instead of original
+          emailValue = editedDuplicate.email || emailValue;
+          mobileValue = editedDuplicate.mobile || mobileValue;
+          nameValue = editedDuplicate.name || nameValue;
+          
+          // Validate edited email format
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(emailValue)) {
+            errors.push({
+              row: rowNumber,
+              name: nameValue,
+              email: emailValue,
+              error: `Invalid email format in edited data: ${emailValue}`
+            });
+            continue;
+          }
+        }
+        
+        // Normalize email and mobile (after potential edit)
+        const emailLower = emailValue.toLowerCase();
+        const mobileTrimmed = mobileValue.trim();
+        const nameTrimmed = nameValue;
+        
+        // Check if edited email/mobile still conflicts (only if edited)
+        if (editedDuplicate) {
+          if (existingEmails.has(emailLower) || existingMobiles.has(mobileTrimmed) ||
+              fileEmails.has(emailLower) || fileMobiles.has(mobileTrimmed)) {
+            // Still a duplicate after edit
+            errors.push({
+              row: rowNumber,
+              name: nameTrimmed,
+              email: emailValue,
+              mobile: mobileValue,
+              error: 'Edited email/mobile still conflicts with existing data'
+            });
+            continue;
+          }
+        }
+        
+        // Validate membership type
+        const validMembershipTypes = ['GM', 'LM', 'FM', 'OTHER'];
+        const membership_type = validMembershipTypes.includes(membershipType) ? membershipType : 'GM';
+        
+        // Map additional fields from CSV/Excel (before duplicate check so we have full data)
+        const nameBangla = row['Name (Bangla)'] || row['name_bangla'] || row['Name Bangla'] || '';
+        const batchValue = batch ? batch.toString().trim() : '';
+        const group = row['Group'] || row['group'] || '';
+        const rollNo = row['Roll No'] || row['roll_no'] || row['Roll No.'] || row['Roll Number'] || '';
+        const bloodGroup = row['Blood Group'] || row['blood_group'] || '';
+        const birthdayMonth = row['Birthday Month'] || row['birthday_month'] || row['Birth Month'] || '';
+        const birthdayDay = row['Birthday Day'] || row['birthday_day'] || row['Birth Day'] || '';
+        const higherStudy1 = row['Higher Study 1'] || row['higher_study_1'] || '';
+        const hs1Institute = row['HS 1 Institute'] || row['hs_1_institute'] || '';
+        const higherStudy2 = row['Higher Study 2'] || row['higher_study_2'] || '';
+        const hs2Institute = row['HS 2 Institute'] || row['hs_2_institute'] || '';
+        const school = row['School'] || row['school'] || '';
+        const homeDistrict = row['Home District'] || row['home_district'] || '';
+        const organization = row['Organization'] || row['organization'] || '';
+        const position = row['Position'] || row['position'] || '';
+        const department = row['Department'] || row['department'] || '';
+        const profession = row['Profession'] || row['profession'] || '';
+        const nrbCountry = row['NRB Country'] || row['nrb_country'] || '';
+        const livingInArea = row['Living in Area'] || row['living_in_area'] || '';
+        const jobLocation = row['Job Location'] || row['job_location'] || '';
+        const otherClubMember = row['Other Club Member'] || row['other_club_member'] || '';
+        const remarks = row['Remarks'] || row['remarks'] || '';
+        const imageUrl = getValue([
+          'Image URL', 'image_url', 'Image', 'image', 'Photo', 'photo', 'Photo URL', 'photo_url',
+          'Picture', 'picture', 'Profile Picture', 'profile_picture'
+        ]);
+        
+        // Prepare member data structure for duplicate detection (with all fields)
+        const memberData = {
+          row: rowNumber,
+          name: nameTrimmed,
+          email: emailValue,
+          mobile: mobileValue,
+          name_bangla: nameBangla ? nameBangla.toString().trim() : '',
+          membership_type,
+          batch: batchValue,
+          group: group ? group.toString().trim() : '',
+          roll_no: rollNo ? rollNo.toString().trim() : '',
+          blood_group: bloodGroup ? bloodGroup.toString().trim() : '',
+          birthday_month: birthdayMonth ? parseInt(birthdayMonth.toString()) : null,
+          birthday_day: birthdayDay ? parseInt(birthdayDay.toString()) : null,
+          higher_study_1: higherStudy1 ? higherStudy1.toString().trim() : '',
+          hs_1_institute: hs1Institute ? hs1Institute.toString().trim() : '',
+          higher_study_2: higherStudy2 ? higherStudy2.toString().trim() : '',
+          hs_2_institute: hs2Institute ? hs2Institute.toString().trim() : '',
+          school: school ? school.toString().trim() : '',
+          home_district: homeDistrict ? homeDistrict.toString().trim() : '',
+          organization: organization ? organization.toString().trim() : '',
+          position: position ? position.toString().trim() : '',
+          department: department ? department.toString().trim() : '',
+          profession: profession ? profession.toString().trim() : '',
+          nrb_country: nrbCountry ? nrbCountry.toString().trim() : '',
+          living_in_area: livingInArea ? livingInArea.toString().trim() : '',
+          job_location: jobLocation ? jobLocation.toString().trim() : '',
+          other_club_member: otherClubMember ? otherClubMember.toString().trim() : '',
+          remarks: remarks ? remarks.toString().trim() : '',
+          image_url: imageUrl || ''
+        };
+
         // Check for duplicates in database (ONLY email and mobile)
         if (existingEmails.has(emailLower) || existingMobiles.has(mobileTrimmed)) {
-          skipped.push({
-            row: rowNumber,
-            name: nameTrimmed,
-            email: email.toString().trim(),
-            mobile: mobileTrimmed,
-            reason: existingEmails.has(emailLower) ? 'Email already exists in database' : 'Mobile already exists in database'
+          const duplicateType = existingEmails.has(emailLower) ? 'email' : 'mobile';
+          const duplicateKey = existingEmails.has(emailLower) ? emailLower : mobileTrimmed;
+          const duplicateGroup = duplicateType === 'email' 
+            ? duplicateEmailGroups.get(duplicateKey) || []
+            : duplicateMobileGroups.get(duplicateKey) || [];
+          
+          duplicateGroup.push({
+            ...memberData,
+            reason: existingEmails.has(emailLower) ? 'Email already exists in database' : 'Mobile already exists in database',
+            duplicateType: duplicateType,
+            isExisting: true
           });
+          
+          if (duplicateType === 'email') {
+            duplicateEmailGroups.set(duplicateKey, duplicateGroup);
+          } else {
+            duplicateMobileGroups.set(duplicateKey, duplicateGroup);
+          }
           continue;
         }
         
         // Check for duplicates within the same file (ONLY email and mobile)
-        if (fileEmails.has(emailLower) || fileMobiles.has(mobileTrimmed)) {
-          skipped.push({
-            row: rowNumber,
-            name: nameTrimmed,
-            email: email.toString().trim(),
-            mobile: mobileTrimmed,
-            reason: fileEmails.has(emailLower) ? 'Duplicate email in this file' : 'Duplicate mobile in this file'
-          });
+        const hasEmailDuplicate = fileEmails.has(emailLower);
+        const hasMobileDuplicate = fileMobiles.has(mobileTrimmed);
+        
+        if (hasEmailDuplicate || hasMobileDuplicate) {
+          // Handle email duplicate
+          if (hasEmailDuplicate) {
+            const duplicateGroup = duplicateEmailGroups.get(emailLower) || [];
+            const firstRecord = fileEmails.get(emailLower);
+            
+            // Add first record to group if not already there
+            if (duplicateGroup.length === 0 && firstRecord) {
+              duplicateGroup.push({
+                ...firstRecord,
+                reason: 'Duplicate email in this file (first occurrence)',
+                duplicateType: 'email',
+                isExisting: false
+              });
+            }
+            
+            // Add current record
+            duplicateGroup.push({
+              ...memberData,
+              reason: 'Duplicate email in this file',
+              duplicateType: 'email',
+              isExisting: false
+            });
+            
+            duplicateEmailGroups.set(emailLower, duplicateGroup);
+          }
+          
+          // Handle mobile duplicate
+          if (hasMobileDuplicate) {
+            const duplicateGroup = duplicateMobileGroups.get(mobileTrimmed) || [];
+            const firstRecord = fileMobiles.get(mobileTrimmed);
+            
+            // Add first record to group if not already there
+            if (duplicateGroup.length === 0 && firstRecord) {
+              duplicateGroup.push({
+                ...firstRecord,
+                reason: 'Duplicate mobile in this file (first occurrence)',
+                duplicateType: 'mobile',
+                isExisting: false
+              });
+            }
+            
+            // Add current record
+            duplicateGroup.push({
+              ...memberData,
+              reason: 'Duplicate mobile in this file',
+              duplicateType: 'mobile',
+              isExisting: false
+            });
+            
+            duplicateMobileGroups.set(mobileTrimmed, duplicateGroup);
+          }
+          
           continue;
         }
+        
+        // Store first occurrence for future duplicate detection
+        fileEmails.set(emailLower, memberData);
+        fileMobiles.set(mobileTrimmed, memberData);
 
         // Check for duplicate names (but don't skip - just track for user confirmation)
         const isDuplicateName = fileNames.has(nameTrimmed);
@@ -225,8 +405,8 @@ export async function POST(request: NextRequest) {
           duplicateNames.push({
             row: rowNumber,
             name: nameTrimmed,
-            email: email.toString().trim(),
-            mobile: mobileTrimmed,
+            email: emailValue,
+            mobile: mobileValue,
             firstOccurrenceRow: fileNames.get(nameTrimmed) || rowNumber,
             reason: 'Duplicate name found in this file'
           });
@@ -236,10 +416,6 @@ export async function POST(request: NextRequest) {
           // First occurrence of this name
           fileNames.set(nameTrimmed, rowNumber);
         }
-
-        // Validate membership type
-        const validMembershipTypes = ['GM', 'LM', 'FM', 'OTHER'];
-        const membership_type = validMembershipTypes.includes(membershipType) ? membershipType : 'GM';
 
         // Handle image if provided as base64 or URL
         let finalImageUrl = imageUrl;
@@ -271,62 +447,40 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Map additional fields from CSV/Excel
-        const nameBangla = row['Name (Bangla)'] || row['name_bangla'] || row['Name Bangla'] || '';
-        const group = row['Group'] || row['group'] || '';
-        const rollNo = row['Roll No'] || row['roll_no'] || row['Roll No.'] || row['Roll Number'] || '';
-        const bloodGroup = row['Blood Group'] || row['blood_group'] || '';
-        const birthdayMonth = row['Birthday Month'] || row['birthday_month'] || row['Birth Month'] || '';
-        const birthdayDay = row['Birthday Day'] || row['birthday_day'] || row['Birth Day'] || '';
-        const higherStudy1 = row['Higher Study 1'] || row['higher_study_1'] || '';
-        const hs1Institute = row['HS 1 Institute'] || row['hs_1_institute'] || '';
-        const higherStudy2 = row['Higher Study 2'] || row['higher_study_2'] || '';
-        const hs2Institute = row['HS 2 Institute'] || row['hs_2_institute'] || '';
-        const school = row['School'] || row['school'] || '';
-        const homeDistrict = row['Home District'] || row['home_district'] || '';
-        const organization = row['Organization'] || row['organization'] || '';
-        const position = row['Position'] || row['position'] || '';
-        const department = row['Department'] || row['department'] || '';
-        const profession = row['Profession'] || row['profession'] || '';
-        const nrbCountry = row['NRB Country'] || row['nrb_country'] || '';
-        const livingInArea = row['Living in Area'] || row['living_in_area'] || '';
-        const jobLocation = row['Job Location'] || row['job_location'] || '';
-        const otherClubMember = row['Other Club Member'] || row['other_club_member'] || '';
-        const remarks = row['Remarks'] || row['remarks'] || '';
-
+        // Add valid member to import list (edited duplicates already handled at the beginning)
         members.push({
-          name: name.toString().trim(),
-          name_bangla: nameBangla ? nameBangla.toString().trim() : null,
-          email: email.toString().trim(),
-          mobile: mobile.toString().trim(),
-          membership_type,
-          batch: batch ? batch.toString().trim() : null,
-          group: group ? group.toString().trim() : null,
-          roll_no: rollNo ? rollNo.toString().trim() : null,
+          name: memberData.name,
+          name_bangla: memberData.name_bangla || null,
+          email: memberData.email,
+          mobile: memberData.mobile,
+          membership_type: memberData.membership_type,
+          batch: memberData.batch || null,
+          group: memberData.group || null,
+          roll_no: memberData.roll_no || null,
           image_url: finalImageUrl || null,
-          blood_group: bloodGroup ? bloodGroup.toString().trim() : null,
-          birthday_month: birthdayMonth ? parseInt(birthdayMonth.toString()) : null,
-          birthday_day: birthdayDay ? parseInt(birthdayDay.toString()) : null,
-          higher_study_1: higherStudy1 ? higherStudy1.toString().trim() : null,
-          hs_1_institute: hs1Institute ? hs1Institute.toString().trim() : null,
-          higher_study_2: higherStudy2 ? higherStudy2.toString().trim() : null,
-          hs_2_institute: hs2Institute ? hs2Institute.toString().trim() : null,
-          school: school ? school.toString().trim() : null,
-          home_district: homeDistrict ? homeDistrict.toString().trim() : null,
-          organization: organization ? organization.toString().trim() : null,
-          position: position ? position.toString().trim() : null,
-          department: department ? department.toString().trim() : null,
-          profession: profession ? profession.toString().trim() : null,
-          nrb_country: nrbCountry ? nrbCountry.toString().trim() : null,
-          living_in_area: livingInArea ? livingInArea.toString().trim() : null,
-          job_location: jobLocation ? jobLocation.toString().trim() : null,
-          other_club_member: otherClubMember ? otherClubMember.toString().trim() : null,
-          remarks: remarks ? remarks.toString().trim() : null
+          blood_group: memberData.blood_group || null,
+          birthday_month: memberData.birthday_month,
+          birthday_day: memberData.birthday_day,
+          higher_study_1: memberData.higher_study_1 || null,
+          hs_1_institute: memberData.hs_1_institute || null,
+          higher_study_2: memberData.higher_study_2 || null,
+          hs_2_institute: memberData.hs_2_institute || null,
+          school: memberData.school || null,
+          home_district: memberData.home_district || null,
+          organization: memberData.organization || null,
+          position: memberData.position || null,
+          department: memberData.department || null,
+          profession: memberData.profession || null,
+          nrb_country: memberData.nrb_country || null,
+          living_in_area: memberData.living_in_area || null,
+          job_location: memberData.job_location || null,
+          other_club_member: memberData.other_club_member || null,
+          remarks: memberData.remarks || null
         });
 
         // Add to file sets to prevent duplicates within the same import
-        fileEmails.add(emailLower);
-        fileMobiles.add(mobileTrimmed);
+        fileEmails.set(emailLower, memberData);
+        fileMobiles.set(mobileTrimmed, memberData);
       } catch (rowError: any) {
         errors.push({
           row: rowNumber,
@@ -335,6 +489,57 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Combine all duplicate groups (email and mobile)
+    const allDuplicateGroups: Array<{ type: string; key: string; records: any[] }> = [];
+    
+    duplicateEmailGroups.forEach((records, email) => {
+      allDuplicateGroups.push({ type: 'email', key: email, records });
+    });
+    
+    duplicateMobileGroups.forEach((records, mobile) => {
+      allDuplicateGroups.push({ type: 'mobile', key: mobile, records });
+    });
+    
+    // If there are duplicate email/mobile records and no edited duplicates provided, return for user confirmation
+    if (allDuplicateGroups.length > 0 && editedDuplicates.length === 0) {
+      // Import valid members (non-duplicates) first
+      let validMembersImported = 0;
+      if (members.length > 0) {
+        const batchSize = 50;
+        for (let i = 0; i < members.length; i += batchSize) {
+          const batch = members.slice(i, i + batchSize);
+          try {
+            const { data: upserted, error: upsertError } = await supabaseAdmin
+              .from('members')
+              .upsert(batch, {
+                onConflict: 'mobile',
+                ignoreDuplicates: false
+              })
+              .select();
+
+            if (!upsertError && upserted) {
+              validMembersImported += upserted.length;
+            }
+          } catch (err) {
+            console.error('Error importing valid members:', err);
+          }
+        }
+      }
+
+      return NextResponse.json(
+        { 
+          requiresDuplicateConfirmation: true,
+          duplicateGroups: allDuplicateGroups,
+          message: `Found ${allDuplicateGroups.length} duplicate group(s) (email/mobile). Please review and modify or approve them.`,
+          validMembersCount: members.length,
+          validMembersImported: validMembersImported,
+          errors: errors.length > 0 ? errors : undefined,
+          skipped: skipped.length > 0 ? skipped : undefined
+        },
+        { status: 200 }
+      );
+    }
+    
     // If there are duplicate names and user hasn't confirmed to include them, 
     // import valid members first, then return duplicate names for confirmation
     if (duplicateNames.length > 0 && !includeDuplicateNames) {
