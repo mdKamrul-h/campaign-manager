@@ -4,34 +4,6 @@ import { parseExcelFile, parseCSVFile } from '@/lib/xlsx-utils';
 
 type SkippedRecord = { row: number; name: string; email: string; mobile: string; reason: string };
 
-/**
- * Normalize mobile number - convert from scientific notation to regular number format
- * Removes decimal points and converts to string without scientific notation
- * Example: 1.23456e+10 -> "12345600000", 8801712345678.0 -> "8801712345678"
- */
-function normalizeMobileNumber(mobile: string | number): string {
-  if (!mobile && mobile !== 0) return '';
-  
-  // Convert to string first
-  let mobileStr = String(mobile);
-  
-  // If it's in scientific notation (contains 'e' or 'E')
-  if (mobileStr.includes('e') || mobileStr.includes('E')) {
-    // Convert scientific notation to regular number
-    const num = parseFloat(mobileStr);
-    // Convert to string without scientific notation and remove decimal point
-    mobileStr = num.toFixed(0);
-  } else {
-    // Remove decimal point if present
-    mobileStr = mobileStr.replace(/\.0+$/, '').replace(/\./g, '');
-  }
-  
-  // Remove any non-digit characters (spaces, dashes, etc.) but keep the number
-  mobileStr = mobileStr.replace(/[^\d]/g, '');
-  
-  return mobileStr;
-}
-
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -101,10 +73,7 @@ export async function POST(request: NextRequest) {
       .select('mobile');
 
     const existingMobiles = new Set(
-      (existingMembers || []).map(m => {
-        const mobile = m.mobile?.trim();
-        return mobile ? normalizeMobileNumber(mobile) : null;
-      }).filter(Boolean) as string[]
+      (existingMembers || []).map(m => m.mobile?.trim()).filter(Boolean)
     );
 
     // Process each row
@@ -173,14 +142,11 @@ export async function POST(request: NextRequest) {
           'Email Address', 'email address', 'EMAIL ADDRESS', 'e_mail', 'E_MAIL'
         ]);
         
-        let mobile = getValue([
+        const mobile = getValue([
           'Mobile', 'mobile', 'MOBILE', 'Phone', 'phone', 'PHONE',
           'Phone Number', 'phone number', 'PHONE NUMBER', 'Mobile Number', 'mobile number',
           'Contact', 'contact', 'CONTACT', 'Cell', 'cell', 'CELL'
         ]);
-        
-        // Normalize mobile number - convert from scientific notation and remove decimals
-        mobile = normalizeMobileNumber(mobile);
         
         const membershipTypeRaw = getValue([
           'Membership Type', 'membership_type', 'Membership', 'membership', 'MEMBERSHIP',
@@ -245,9 +211,6 @@ export async function POST(request: NextRequest) {
           mobileValue = editedDuplicate.mobile || mobileValue;
           nameValue = editedDuplicate.name || nameValue;
           
-          // Normalize edited mobile number
-          mobileValue = normalizeMobileNumber(mobileValue);
-          
           // Validate edited email format
           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
           if (!emailRegex.test(emailValue)) {
@@ -261,13 +224,13 @@ export async function POST(request: NextRequest) {
           }
         }
         
-        // Normalize mobile number (after potential edit)
-        const mobileNormalized = normalizeMobileNumber(mobileValue);
+        // Trim mobile number (after potential edit)
+        const mobileTrimmed = mobileValue.trim();
         const nameTrimmed = nameValue;
         
         // Check if edited mobile still conflicts (only if edited)
         if (editedDuplicate) {
-          if (existingMobiles.has(mobileNormalized) || fileMobiles.has(mobileNormalized)) {
+          if (existingMobiles.has(mobileTrimmed) || fileMobiles.has(mobileTrimmed)) {
             // Still a duplicate after edit
             errors.push({
               row: rowNumber,
@@ -314,7 +277,7 @@ export async function POST(request: NextRequest) {
           row: rowNumber,
           name: nameTrimmed,
           email: emailValue,
-          mobile: mobileNormalized, // Use normalized mobile for duplicate checking
+          mobile: mobileTrimmed,
           name_bangla: nameBangla ? nameBangla.toString().trim() : '',
           membership_type,
           batch: batchValue,
@@ -342,8 +305,8 @@ export async function POST(request: NextRequest) {
         };
 
         // Check for duplicates in database (ONLY mobile)
-        if (existingMobiles.has(mobileNormalized)) {
-          const duplicateGroup = duplicateMobileGroups.get(mobileNormalized) || [];
+        if (existingMobiles.has(mobileTrimmed)) {
+          const duplicateGroup = duplicateMobileGroups.get(mobileTrimmed) || [];
           
           duplicateGroup.push({
             ...memberData,
@@ -352,16 +315,16 @@ export async function POST(request: NextRequest) {
             isExisting: true
           });
           
-          duplicateMobileGroups.set(mobileNormalized, duplicateGroup);
+          duplicateMobileGroups.set(mobileTrimmed, duplicateGroup);
           continue;
         }
         
         // Check for duplicates within the same file (ONLY mobile)
-        const hasMobileDuplicate = fileMobiles.has(mobileNormalized);
+        const hasMobileDuplicate = fileMobiles.has(mobileTrimmed);
         
         if (hasMobileDuplicate) {
-          const duplicateGroup = duplicateMobileGroups.get(mobileNormalized) || [];
-          const firstRecord = fileMobiles.get(mobileNormalized);
+          const duplicateGroup = duplicateMobileGroups.get(mobileTrimmed) || [];
+          const firstRecord = fileMobiles.get(mobileTrimmed);
           
           // Add first record to group if not already there
           if (duplicateGroup.length === 0 && firstRecord) {
@@ -381,12 +344,12 @@ export async function POST(request: NextRequest) {
             isExisting: false
           });
           
-          duplicateMobileGroups.set(mobileNormalized, duplicateGroup);
+          duplicateMobileGroups.set(mobileTrimmed, duplicateGroup);
           continue;
         }
         
         // Store first occurrence for future duplicate detection
-        fileMobiles.set(mobileNormalized, memberData);
+        fileMobiles.set(mobileTrimmed, memberData);
 
         // Check for duplicate names (but don't skip - just track for user confirmation)
         const isDuplicateName = fileNames.has(nameTrimmed);
@@ -395,7 +358,7 @@ export async function POST(request: NextRequest) {
             row: rowNumber,
             name: nameTrimmed,
             email: emailValue,
-            mobile: mobileNormalized,
+            mobile: mobileTrimmed,
             firstOccurrenceRow: fileNames.get(nameTrimmed) || rowNumber,
             reason: 'Duplicate name found in this file'
           });
@@ -441,7 +404,7 @@ export async function POST(request: NextRequest) {
           name: memberData.name,
           name_bangla: memberData.name_bangla || null,
           email: memberData.email,
-          mobile: mobileNormalized, // Store normalized mobile number (no scientific notation, no decimals)
+          mobile: mobileTrimmed,
           membership_type: memberData.membership_type,
           batch: memberData.batch || null,
           group: memberData.group || null,
@@ -467,8 +430,8 @@ export async function POST(request: NextRequest) {
           remarks: memberData.remarks || null
         });
 
-        // Add to file sets to prevent duplicates within the same import (using normalized mobile)
-        fileMobiles.set(mobileNormalized, memberData);
+        // Add to file sets to prevent duplicates within the same import
+        fileMobiles.set(mobileTrimmed, memberData);
       } catch (rowError: any) {
         errors.push({
           row: rowNumber,

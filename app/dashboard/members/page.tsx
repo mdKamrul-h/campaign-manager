@@ -435,37 +435,10 @@ export default function MembersPage() {
     }
   };
 
-  const normalizeMobileNumber = (mobile: string | number): string => {
-    if (!mobile && mobile !== 0) return '';
-    
-    // Convert to string first
-    let mobileStr = String(mobile);
-    
-    // If it's in scientific notation (contains 'e' or 'E')
-    if (mobileStr.includes('e') || mobileStr.includes('E')) {
-      // Convert scientific notation to regular number
-      const num = parseFloat(mobileStr);
-      // Convert to string without scientific notation and remove decimal point
-      mobileStr = num.toFixed(0);
-    } else {
-      // Remove decimal point if present
-      mobileStr = mobileStr.replace(/\.0+$/, '').replace(/\./g, '');
-    }
-    
-    // Remove any non-digit characters (spaces, dashes, etc.) but keep the number
-    mobileStr = mobileStr.replace(/[^\d]/g, '');
-    
-    return mobileStr;
-  };
-
   const handleEditDuplicate = (row: number, field: string, value: string) => {
     const updated = new Map(editedDuplicates);
     const existing = updated.get(row) || {};
-    
-    // Normalize mobile number if editing mobile field
-    const normalizedValue = field === 'mobile' ? normalizeMobileNumber(value) : value;
-    
-    updated.set(row, { ...existing, [field]: normalizedValue });
+    updated.set(row, { ...existing, [field]: value });
     setEditedDuplicates(updated);
   };
 
