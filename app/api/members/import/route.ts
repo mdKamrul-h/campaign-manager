@@ -275,10 +275,7 @@ export async function POST(request: NextRequest) {
         const jobLocation = row['Job Location'] || row['job_location'] || '';
         const otherClubMember = row['Other Club Member'] || row['other_club_member'] || '';
         const remarks = row['Remarks'] || row['remarks'] || '';
-        const imageUrl = getValue([
-          'Image URL', 'image_url', 'Image', 'image', 'Photo', 'photo', 'Photo URL', 'photo_url',
-          'Picture', 'picture', 'Profile Picture', 'profile_picture'
-        ]);
+        // imageUrl is already defined above at line 164
         
         // Prepare member data structure for duplicate detection (with all fields)
         const memberData = {
