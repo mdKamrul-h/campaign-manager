@@ -29,6 +29,7 @@ export default function MembersPage() {
     duplicateNames?: Array<{ row: number; name: string; email: string; mobile: string; firstOccurrenceRow: number; reason: string }>;
     message?: string;
     validMembersCount?: number;
+    validMembersImported?: number;
   } | null>(null);
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
 
