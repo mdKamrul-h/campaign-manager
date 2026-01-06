@@ -4,6 +4,34 @@ import { parseExcelFile, parseCSVFile } from '@/lib/xlsx-utils';
 
 type SkippedRecord = { row: number; name: string; email: string; mobile: string; reason: string };
 
+/**
+ * Normalize mobile number - convert from scientific notation to regular number format
+ * Removes decimal points and converts to string without scientific notation
+ * Example: 1.23456e+10 -> "12345600000", 8801712345678.0 -> "8801712345678"
+ */
+function normalizeMobileNumber(mobile: string | number): string {
+  if (!mobile && mobile !== 0) return '';
+  
+  // Convert to string first
+  let mobileStr = String(mobile);
+  
+  // If it's in scientific notation (contains 'e' or 'E')
+  if (mobileStr.includes('e') || mobileStr.includes('E')) {
+    // Convert scientific notation to regular number
+    const num = parseFloat(mobileStr);
+    // Convert to string without scientific notation and remove decimal point
+    mobileStr = num.toFixed(0);
+  } else {
+    // Remove decimal point if present
+    mobileStr = mobileStr.replace(/\.0+$/, '').replace(/\./g, '');
+  }
+  
+  // Remove any non-digit characters (spaces, dashes, etc.) but keep the number
+  mobileStr = mobileStr.replace(/[^\d]/g, '');
+  
+  return mobileStr;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -67,16 +95,16 @@ export async function POST(request: NextRequest) {
     console.log('Available columns in file:', availableColumns);
 
     // Fetch existing members to check for duplicates
-    // We'll check by email (primary) and mobile (secondary)
+    // Only check by mobile number (not email)
     const { data: existingMembers } = await supabaseAdmin
       .from('members')
-      .select('email, mobile');
+      .select('mobile');
 
-    const existingEmails = new Set(
-      (existingMembers || []).map(m => m.email?.toLowerCase().trim()).filter(Boolean)
-    );
     const existingMobiles = new Set(
-      (existingMembers || []).map(m => m.mobile?.trim()).filter(Boolean)
+      (existingMembers || []).map(m => {
+        const mobile = m.mobile?.trim();
+        return mobile ? normalizeMobileNumber(mobile) : null;
+      }).filter(Boolean) as string[]
     );
 
     // Process each row
@@ -84,12 +112,10 @@ export async function POST(request: NextRequest) {
     const errors: Array<{ row: number; name?: string; email?: string; mobile?: string; error: string }> = [];
     const skipped: SkippedRecord[] = [];
     const duplicateNames: Array<{ row: number; name: string; email: string; mobile: string; firstOccurrenceRow: number; reason: string }> = []; // Track duplicate names separately
-    const duplicateEmailGroups = new Map<string, any[]>(); // email -> array of duplicate records
     const duplicateMobileGroups = new Map<string, any[]>(); // mobile -> array of duplicate records
     const imageUploadPromises = [];
     
-    // Track emails and mobiles within the current file to prevent duplicates in the same import
-    const fileEmails = new Map<string, any>(); // email -> first record
+    // Track mobiles within the current file to prevent duplicates in the same import
     const fileMobiles = new Map<string, any>(); // mobile -> first record
     // Track names within the file to detect duplicates
     const fileNames = new Map<string, number>(); // name -> row number (first occurrence)
@@ -147,11 +173,14 @@ export async function POST(request: NextRequest) {
           'Email Address', 'email address', 'EMAIL ADDRESS', 'e_mail', 'E_MAIL'
         ]);
         
-        const mobile = getValue([
+        let mobile = getValue([
           'Mobile', 'mobile', 'MOBILE', 'Phone', 'phone', 'PHONE',
           'Phone Number', 'phone number', 'PHONE NUMBER', 'Mobile Number', 'mobile number',
           'Contact', 'contact', 'CONTACT', 'Cell', 'cell', 'CELL'
         ]);
+        
+        // Normalize mobile number - convert from scientific notation and remove decimals
+        mobile = normalizeMobileNumber(mobile);
         
         const membershipTypeRaw = getValue([
           'Membership Type', 'membership_type', 'Membership', 'membership', 'MEMBERSHIP',
@@ -216,6 +245,9 @@ export async function POST(request: NextRequest) {
           mobileValue = editedDuplicate.mobile || mobileValue;
           nameValue = editedDuplicate.name || nameValue;
           
+          // Normalize edited mobile number
+          mobileValue = normalizeMobileNumber(mobileValue);
+          
           // Validate edited email format
           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
           if (!emailRegex.test(emailValue)) {
@@ -229,22 +261,20 @@ export async function POST(request: NextRequest) {
           }
         }
         
-        // Normalize email and mobile (after potential edit)
-        const emailLower = emailValue.toLowerCase();
-        const mobileTrimmed = mobileValue.trim();
+        // Normalize mobile number (after potential edit)
+        const mobileNormalized = normalizeMobileNumber(mobileValue);
         const nameTrimmed = nameValue;
         
-        // Check if edited email/mobile still conflicts (only if edited)
+        // Check if edited mobile still conflicts (only if edited)
         if (editedDuplicate) {
-          if (existingEmails.has(emailLower) || existingMobiles.has(mobileTrimmed) ||
-              fileEmails.has(emailLower) || fileMobiles.has(mobileTrimmed)) {
+          if (existingMobiles.has(mobileNormalized) || fileMobiles.has(mobileNormalized)) {
             // Still a duplicate after edit
             errors.push({
               row: rowNumber,
               name: nameTrimmed,
               email: emailValue,
               mobile: mobileValue,
-              error: 'Edited email/mobile still conflicts with existing data'
+              error: 'Edited mobile number still conflicts with existing data'
             });
             continue;
           }
@@ -284,7 +314,7 @@ export async function POST(request: NextRequest) {
           row: rowNumber,
           name: nameTrimmed,
           email: emailValue,
-          mobile: mobileValue,
+          mobile: mobileNormalized, // Use normalized mobile for duplicate checking
           name_bangla: nameBangla ? nameBangla.toString().trim() : '',
           membership_type,
           batch: batchValue,
@@ -311,92 +341,52 @@ export async function POST(request: NextRequest) {
           image_url: imageUrl || ''
         };
 
-        // Check for duplicates in database (ONLY email and mobile)
-        if (existingEmails.has(emailLower) || existingMobiles.has(mobileTrimmed)) {
-          const duplicateType = existingEmails.has(emailLower) ? 'email' : 'mobile';
-          const duplicateKey = existingEmails.has(emailLower) ? emailLower : mobileTrimmed;
-          const duplicateGroup = duplicateType === 'email' 
-            ? duplicateEmailGroups.get(duplicateKey) || []
-            : duplicateMobileGroups.get(duplicateKey) || [];
+        // Check for duplicates in database (ONLY mobile)
+        if (existingMobiles.has(mobileNormalized)) {
+          const duplicateGroup = duplicateMobileGroups.get(mobileNormalized) || [];
           
           duplicateGroup.push({
             ...memberData,
-            reason: existingEmails.has(emailLower) ? 'Email already exists in database' : 'Mobile already exists in database',
-            duplicateType: duplicateType,
+            reason: 'Mobile number already exists in database',
+            duplicateType: 'mobile',
             isExisting: true
           });
           
-          if (duplicateType === 'email') {
-            duplicateEmailGroups.set(duplicateKey, duplicateGroup);
-          } else {
-            duplicateMobileGroups.set(duplicateKey, duplicateGroup);
-          }
+          duplicateMobileGroups.set(mobileNormalized, duplicateGroup);
           continue;
         }
         
-        // Check for duplicates within the same file (ONLY email and mobile)
-        const hasEmailDuplicate = fileEmails.has(emailLower);
-        const hasMobileDuplicate = fileMobiles.has(mobileTrimmed);
+        // Check for duplicates within the same file (ONLY mobile)
+        const hasMobileDuplicate = fileMobiles.has(mobileNormalized);
         
-        if (hasEmailDuplicate || hasMobileDuplicate) {
-          // Handle email duplicate
-          if (hasEmailDuplicate) {
-            const duplicateGroup = duplicateEmailGroups.get(emailLower) || [];
-            const firstRecord = fileEmails.get(emailLower);
-            
-            // Add first record to group if not already there
-            if (duplicateGroup.length === 0 && firstRecord) {
-              duplicateGroup.push({
-                ...firstRecord,
-                reason: 'Duplicate email in this file (first occurrence)',
-                duplicateType: 'email',
-                isExisting: false
-              });
-            }
-            
-            // Add current record
-            duplicateGroup.push({
-              ...memberData,
-              reason: 'Duplicate email in this file',
-              duplicateType: 'email',
-              isExisting: false
-            });
-            
-            duplicateEmailGroups.set(emailLower, duplicateGroup);
-          }
+        if (hasMobileDuplicate) {
+          const duplicateGroup = duplicateMobileGroups.get(mobileNormalized) || [];
+          const firstRecord = fileMobiles.get(mobileNormalized);
           
-          // Handle mobile duplicate
-          if (hasMobileDuplicate) {
-            const duplicateGroup = duplicateMobileGroups.get(mobileTrimmed) || [];
-            const firstRecord = fileMobiles.get(mobileTrimmed);
-            
-            // Add first record to group if not already there
-            if (duplicateGroup.length === 0 && firstRecord) {
-              duplicateGroup.push({
-                ...firstRecord,
-                reason: 'Duplicate mobile in this file (first occurrence)',
-                duplicateType: 'mobile',
-                isExisting: false
-              });
-            }
-            
-            // Add current record
+          // Add first record to group if not already there
+          if (duplicateGroup.length === 0 && firstRecord) {
             duplicateGroup.push({
-              ...memberData,
-              reason: 'Duplicate mobile in this file',
+              ...firstRecord,
+              reason: 'Duplicate mobile in this file (first occurrence)',
               duplicateType: 'mobile',
               isExisting: false
             });
-            
-            duplicateMobileGroups.set(mobileTrimmed, duplicateGroup);
           }
           
+          // Add current record
+          duplicateGroup.push({
+            ...memberData,
+            reason: 'Duplicate mobile in this file',
+            duplicateType: 'mobile',
+            isExisting: false
+          });
+          
+          duplicateMobileGroups.set(mobileNormalized, duplicateGroup);
           continue;
         }
         
         // Store first occurrence for future duplicate detection
-        fileEmails.set(emailLower, memberData);
-        fileMobiles.set(mobileTrimmed, memberData);
+        fileMobiles.set(mobileNormalized, memberData);
 
         // Check for duplicate names (but don't skip - just track for user confirmation)
         const isDuplicateName = fileNames.has(nameTrimmed);
@@ -405,7 +395,7 @@ export async function POST(request: NextRequest) {
             row: rowNumber,
             name: nameTrimmed,
             email: emailValue,
-            mobile: mobileValue,
+            mobile: mobileNormalized,
             firstOccurrenceRow: fileNames.get(nameTrimmed) || rowNumber,
             reason: 'Duplicate name found in this file'
           });
@@ -451,7 +441,7 @@ export async function POST(request: NextRequest) {
           name: memberData.name,
           name_bangla: memberData.name_bangla || null,
           email: memberData.email,
-          mobile: memberData.mobile,
+          mobile: mobileNormalized, // Store normalized mobile number (no scientific notation, no decimals)
           membership_type: memberData.membership_type,
           batch: memberData.batch || null,
           group: memberData.group || null,
@@ -477,9 +467,8 @@ export async function POST(request: NextRequest) {
           remarks: memberData.remarks || null
         });
 
-        // Add to file sets to prevent duplicates within the same import
-        fileEmails.set(emailLower, memberData);
-        fileMobiles.set(mobileTrimmed, memberData);
+        // Add to file sets to prevent duplicates within the same import (using normalized mobile)
+        fileMobiles.set(mobileNormalized, memberData);
       } catch (rowError: any) {
         errors.push({
           row: rowNumber,
@@ -488,12 +477,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Combine all duplicate groups (email and mobile)
+    // Combine all duplicate groups (mobile only)
     const allDuplicateGroups: Array<{ type: string; key: string; records: any[] }> = [];
-    
-    duplicateEmailGroups.forEach((records, email) => {
-      allDuplicateGroups.push({ type: 'email', key: email, records });
-    });
     
     duplicateMobileGroups.forEach((records, mobile) => {
       allDuplicateGroups.push({ type: 'mobile', key: mobile, records });
@@ -529,7 +514,7 @@ export async function POST(request: NextRequest) {
         { 
           requiresDuplicateConfirmation: true,
           duplicateGroups: allDuplicateGroups,
-          message: `Found ${allDuplicateGroups.length} duplicate group(s) (email/mobile). Please review and modify or approve them.`,
+          message: `Found ${allDuplicateGroups.length} duplicate group(s) (mobile number). Please review and modify or approve them.`,
           validMembersCount: members.length,
           validMembersImported: validMembersImported,
           errors: errors.length > 0 ? errors : undefined,

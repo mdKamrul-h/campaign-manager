@@ -348,7 +348,7 @@ export default function MembersPage() {
       const result = await response.json();
 
       if (response.ok) {
-        // Check if confirmation is required for duplicate email/mobile
+        // Check if confirmation is required for duplicate mobile numbers
         if (result.requiresDuplicateConfirmation) {
           setImportResult(result);
           setImporting(false);
@@ -435,10 +435,37 @@ export default function MembersPage() {
     }
   };
 
+  const normalizeMobileNumber = (mobile: string | number): string => {
+    if (!mobile && mobile !== 0) return '';
+    
+    // Convert to string first
+    let mobileStr = String(mobile);
+    
+    // If it's in scientific notation (contains 'e' or 'E')
+    if (mobileStr.includes('e') || mobileStr.includes('E')) {
+      // Convert scientific notation to regular number
+      const num = parseFloat(mobileStr);
+      // Convert to string without scientific notation and remove decimal point
+      mobileStr = num.toFixed(0);
+    } else {
+      // Remove decimal point if present
+      mobileStr = mobileStr.replace(/\.0+$/, '').replace(/\./g, '');
+    }
+    
+    // Remove any non-digit characters (spaces, dashes, etc.) but keep the number
+    mobileStr = mobileStr.replace(/[^\d]/g, '');
+    
+    return mobileStr;
+  };
+
   const handleEditDuplicate = (row: number, field: string, value: string) => {
     const updated = new Map(editedDuplicates);
     const existing = updated.get(row) || {};
-    updated.set(row, { ...existing, [field]: value });
+    
+    // Normalize mobile number if editing mobile field
+    const normalizedValue = field === 'mobile' ? normalizeMobileNumber(value) : value;
+    
+    updated.set(row, { ...existing, [field]: normalizedValue });
     setEditedDuplicates(updated);
   };
 
@@ -1436,7 +1463,7 @@ export default function MembersPage() {
                 <li><strong>Membership Type</strong> - GM, LM, FM, or OTHER (defaults to GM)</li>
                 <li><strong>Batch</strong> - Batch identifier (optional)</li>
                 <li><strong>Image URL</strong> - URL or base64 image data (optional)</li>
-                <li className="mt-2"><strong>Note:</strong> Only email and mobile numbers must be unique. Duplicate names will be shown for confirmation.</li>
+                <li className="mt-2"><strong>Note:</strong> Only mobile numbers must be unique. Duplicate names will be shown for confirmation.</li>
               </ul>
               <button
                 onClick={downloadTemplate}
@@ -1469,15 +1496,15 @@ export default function MembersPage() {
                 <div className="space-y-4">
                   <div>
                     <p className="font-semibold text-orange-800 mb-2">
-                      ⚠ {importResult.message || 'Duplicate email/mobile found'}
+                      ⚠ {importResult.message || 'Duplicate mobile number found'}
                     </p>
                     <p className="text-sm text-gray-700 mb-3">
-                      Found {importResult.duplicateGroups?.length || 0} duplicate group(s). 
-                      Please review each pair/group below. You can edit the email or mobile to make them unique, or approve to skip.
+                      Found {importResult.duplicateGroups?.length || 0} duplicate group(s) (mobile number). 
+                      Please review each pair/group below. You can edit the mobile number to make it unique, or approve to skip.
                     </p>
                     {importResult.validMembersImported !== undefined && importResult.validMembersImported > 0 && (
                       <p className="text-sm text-green-700 mb-3 font-medium">
-                        ✓ {importResult.validMembersImported} member(s) with unique email/mobile have been imported.
+                        ✓ {importResult.validMembersImported} member(s) with unique mobile numbers have been imported.
                       </p>
                     )}
                   </div>
@@ -1485,7 +1512,7 @@ export default function MembersPage() {
                   {importResult.duplicateGroups && importResult.duplicateGroups.map((group: any, groupIdx: number) => (
                     <div key={groupIdx} className="border border-orange-300 rounded p-3 bg-white">
                       <p className="text-xs font-semibold text-gray-700 mb-2">
-                        Duplicate {group.type === 'email' ? 'Email' : 'Mobile'}: <span className="font-mono">{group.key}</span>
+                        Duplicate Mobile Number: <span className="font-mono">{group.key}</span>
                       </p>
                       <div className="space-y-2">
                         {group.records.map((record: any, recordIdx: number) => (
@@ -1577,12 +1604,12 @@ export default function MembersPage() {
                     </p>
                     {importResult.validMembersImported !== undefined && importResult.validMembersImported > 0 && (
                       <p className="text-sm text-green-700 mb-3 font-medium">
-                        ✓ {importResult.validMembersImported} member(s) with unique email/mobile have been imported.
+                        ✓ {importResult.validMembersImported} member(s) with unique mobile numbers have been imported.
                       </p>
                     )}
                     {importResult.validMembersCount !== undefined && (
                       <p className="text-sm text-gray-600 mb-3">
-                        {importResult.validMembersCount} member(s) with unique email/mobile {importResult.validMembersImported ? 'were imported' : 'will be imported'}.
+                        {importResult.validMembersCount} member(s) with unique mobile numbers {importResult.validMembersImported ? 'were imported' : 'will be imported'}.
                       </p>
                     )}
                   </div>
@@ -1657,7 +1684,7 @@ export default function MembersPage() {
                   </p>
                   {importResult.skipped && importResult.skipped > 0 && (
                     <p className="text-sm text-gray-700">
-                      ⚠ {importResult.skipped} members skipped (duplicate email/mobile)
+                      ⚠ {importResult.skipped} members skipped (duplicate mobile number)
                     </p>
                   )}
                   {importResult.total && (
