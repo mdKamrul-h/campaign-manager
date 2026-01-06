@@ -207,10 +207,14 @@ export async function POST(request: NextRequest) {
           continue;
         }
         
-        // Check if this row has been edited (for duplicate names) - do this before final validation
+        // Normalize name
+        const nameTrimmed = name.toString().trim();
+        
+        // Check if this row has been edited (for duplicate names)
         const editedData = editedDuplicateNames.get(rowNumber);
+        
+        // Validate edited email format if provided
         if (editedData && editedData.email) {
-          // Validate edited email format
           if (!emailRegex.test(editedData.email)) {
             errors.push({
               row: rowNumber,
@@ -221,12 +225,6 @@ export async function POST(request: NextRequest) {
             continue;
           }
         }
-
-        // Normalize name
-        const nameTrimmed = name.toString().trim();
-        
-        // Check if this row has been edited (for duplicate names)
-        const editedData = editedDuplicateNames.get(rowNumber);
         let finalName = nameTrimmed;
         let finalEmail = email.toString().trim();
         let finalMobile = mobile.toString().trim();
