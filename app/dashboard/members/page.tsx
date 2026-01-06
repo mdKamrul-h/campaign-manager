@@ -1545,7 +1545,7 @@ export default function MembersPage() {
                 Cancel
               </button>
               <button
-                onClick={handleImport}
+                onClick={() => handleImport()}
                 disabled={!importFile || importing}
                 className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition disabled:bg-green-400"
               >
