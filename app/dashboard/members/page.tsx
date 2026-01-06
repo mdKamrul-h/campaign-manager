@@ -12,6 +12,30 @@ export default function MembersPage() {
   const [filterBatch, setFilterBatch] = useState<string>('');
   const [filterMembershipType, setFilterMembershipType] = useState<string>('');
   const [batches, setBatches] = useState<Array<{ batch: string | null; batchDisplay: string; count: number }>>([]);
+
+  // Format mobile number for display - convert scientific notation to regular format
+  const formatMobileForDisplay = (mobile: string | number | undefined | null): string => {
+    if (!mobile && mobile !== 0) return '-';
+    
+    // Convert to string first
+    let mobileStr = String(mobile);
+    
+    // If it's in scientific notation (contains 'e' or 'E')
+    if (mobileStr.includes('e') || mobileStr.includes('E')) {
+      // Convert scientific notation to regular number
+      const num = parseFloat(mobileStr);
+      // Check if it's a whole number
+      if (num % 1 === 0) {
+        // Convert to string without scientific notation and without decimal
+        mobileStr = num.toFixed(0);
+      } else {
+        // Has decimal, convert without scientific notation
+        mobileStr = num.toString();
+      }
+    }
+    
+    return mobileStr;
+  };
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
@@ -253,7 +277,7 @@ export default function MembersPage() {
       name: member.name,
       name_bangla: member.name_bangla || '',
       email: member.email,
-      mobile: member.mobile,
+      mobile: formatMobileForDisplay(member.mobile),
       membership_type: member.membership_type,
       batch: member.batch || '',
       group: member.group || '',
@@ -444,7 +468,12 @@ export default function MembersPage() {
 
   const getDuplicateValue = (record: any, field: string) => {
     const edited = editedDuplicates.get(record.row);
-    return edited?.[field] ?? record[field] ?? '';
+    const value = edited?.[field] ?? record[field] ?? '';
+    // Format mobile number for display (convert scientific notation to regular format)
+    if (field === 'mobile' && value) {
+      return formatMobileForDisplay(value);
+    }
+    return value;
   };
 
   const handleSkipDuplicateNames = () => {
@@ -844,7 +873,7 @@ export default function MembersPage() {
                       {member.email}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {member.mobile}
+                      {formatMobileForDisplay(member.mobile)}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
@@ -1485,7 +1514,7 @@ export default function MembersPage() {
                   {importResult.duplicateGroups && importResult.duplicateGroups.map((group: any, groupIdx: number) => (
                     <div key={groupIdx} className="border border-orange-300 rounded p-3 bg-white">
                       <p className="text-xs font-semibold text-gray-700 mb-2">
-                        Duplicate Mobile Number: <span className="font-mono">{group.key}</span>
+                        Duplicate Mobile Number: <span className="font-mono">{formatMobileForDisplay(group.key)}</span>
                       </p>
                       <div className="space-y-2">
                         {group.records.map((record: any, recordIdx: number) => (
@@ -1606,7 +1635,7 @@ export default function MembersPage() {
                               <td className="px-2 py-1">{dup.row}</td>
                               <td className="px-2 py-1 font-medium">{dup.name}</td>
                               <td className="px-2 py-1">{dup.email}</td>
-                              <td className="px-2 py-1">{dup.mobile}</td>
+                              <td className="px-2 py-1">{formatMobileForDisplay(dup.mobile)}</td>
                               <td className="px-2 py-1 text-gray-500">Row {dup.firstOccurrenceRow}</td>
                             </tr>
                           ))}
