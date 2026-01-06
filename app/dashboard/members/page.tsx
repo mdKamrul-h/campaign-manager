@@ -31,8 +31,6 @@ export default function MembersPage() {
     validMembersCount?: number;
   } | null>(null);
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
-  const [editingDuplicateName, setEditingDuplicateName] = useState<number | null>(null);
-  const [editedDuplicateNames, setEditedDuplicateNames] = useState<Array<{ row: number; name: string; email: string; mobile: string; firstOccurrenceRow: number; reason: string }>>([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -383,74 +381,6 @@ export default function MembersPage() {
     }
   };
 
-  const handleEditAndIncludeDuplicateNames = async () => {
-    if (!pendingImportFile || !importResult?.duplicateNames) return;
-
-    setImporting(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', pendingImportFile);
-      formData.append('includeDuplicateNames', 'true');
-      formData.append('editedDuplicateNames', JSON.stringify(editedDuplicateNames));
-
-      const response = await fetch('/api/members/import', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        setImportResult(result);
-        await refreshMembers();
-        await fetchBatches();
-        window.dispatchEvent(new CustomEvent('memberUpdated'));
-        
-        setTimeout(() => {
-          setShowImportModal(false);
-          setImportFile(null);
-          setPendingImportFile(null);
-          setImportResult(null);
-          setEditedDuplicateNames([]);
-          setEditingDuplicateName(null);
-        }, 3000);
-      } else {
-        alert(result.error || 'Failed to import members');
-        setImportResult(result);
-      }
-    } catch (error) {
-      console.error('Import error:', error);
-      alert('Failed to import members');
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const handleEditDuplicateName = (index: number, field: string, value: string) => {
-    if (!importResult?.duplicateNames) return;
-    
-    const updated = [...editedDuplicateNames];
-    const existing = updated.find(d => d.row === importResult.duplicateNames![index].row);
-    
-    if (existing) {
-      (existing as any)[field] = value;
-    } else {
-      updated.push({
-        ...importResult.duplicateNames[index],
-        [field]: value
-      });
-    }
-    
-    setEditedDuplicateNames(updated);
-  };
-
-  const getEditedDuplicateName = (index: number) => {
-    if (!importResult?.duplicateNames) return null;
-    const original = importResult.duplicateNames[index];
-    const edited = editedDuplicateNames.find(d => d.row === original.row);
-    return edited || original;
-  };
-
   const handleSkipDuplicateNames = () => {
     // User chose to skip duplicate names, valid members are already imported
     // Just close the modal and refresh
@@ -458,8 +388,6 @@ export default function MembersPage() {
     setImportFile(null);
     setPendingImportFile(null);
     setImportResult(null);
-    setEditedDuplicateNames([]);
-    setEditingDuplicateName(null);
     refreshMembers();
     fetchBatches();
     window.dispatchEvent(new CustomEvent('memberUpdated'));
@@ -1495,7 +1423,7 @@ export default function MembersPage() {
                   
                   {importResult.duplicateNames && importResult.duplicateNames.length > 0 && (
                     <div className="max-h-60 overflow-y-auto border border-yellow-300 rounded p-3 bg-white">
-                      <p className="text-xs font-semibold text-gray-700 mb-2">Duplicate Names Found (Click to edit):</p>
+                      <p className="text-xs font-semibold text-gray-700 mb-2">Duplicate Names Found:</p>
                       <table className="w-full text-xs">
                         <thead className="bg-gray-50">
                           <tr>
@@ -1504,77 +1432,18 @@ export default function MembersPage() {
                             <th className="px-2 py-1 text-left">Email</th>
                             <th className="px-2 py-1 text-left">Mobile</th>
                             <th className="px-2 py-1 text-left">First Seen</th>
-                            <th className="px-2 py-1 text-left">Action</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y">
-                          {importResult.duplicateNames.slice(0, 20).map((dup: any, idx: number) => {
-                            const edited = getEditedDuplicateName(idx);
-                            const isEditing = editingDuplicateName === idx;
-                            
-                            return (
-                              <tr key={idx} className={`hover:bg-gray-50 ${isEditing ? 'bg-blue-50' : ''}`}>
-                                <td className="px-2 py-1">{dup.row}</td>
-                                <td className="px-2 py-1">
-                                  {isEditing ? (
-                                    <input
-                                      type="text"
-                                      value={edited?.name || ''}
-                                      onChange={(e) => handleEditDuplicateName(idx, 'name', e.target.value)}
-                                      className="w-full px-1 py-0.5 border border-gray-300 rounded text-xs"
-                                      placeholder="Edit name"
-                                    />
-                                  ) : (
-                                    <span className="font-medium">{edited?.name || dup.name}</span>
-                                  )}
-                                </td>
-                                <td className="px-2 py-1">
-                                  {isEditing ? (
-                                    <input
-                                      type="email"
-                                      value={edited?.email || ''}
-                                      onChange={(e) => handleEditDuplicateName(idx, 'email', e.target.value)}
-                                      className="w-full px-1 py-0.5 border border-gray-300 rounded text-xs"
-                                      placeholder="Edit email"
-                                    />
-                                  ) : (
-                                    <span>{edited?.email || dup.email}</span>
-                                  )}
-                                </td>
-                                <td className="px-2 py-1">
-                                  {isEditing ? (
-                                    <input
-                                      type="tel"
-                                      value={edited?.mobile || ''}
-                                      onChange={(e) => handleEditDuplicateName(idx, 'mobile', e.target.value)}
-                                      className="w-full px-1 py-0.5 border border-gray-300 rounded text-xs"
-                                      placeholder="Edit mobile"
-                                    />
-                                  ) : (
-                                    <span>{edited?.mobile || dup.mobile}</span>
-                                  )}
-                                </td>
-                                <td className="px-2 py-1 text-gray-500">Row {dup.firstOccurrenceRow}</td>
-                                <td className="px-2 py-1">
-                                  {isEditing ? (
-                                    <button
-                                      onClick={() => setEditingDuplicateName(null)}
-                                      className="text-blue-600 hover:text-blue-800 text-xs"
-                                    >
-                                      Done
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => setEditingDuplicateName(idx)}
-                                      className="text-blue-600 hover:text-blue-800 text-xs"
-                                    >
-                                      Edit
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
+                          {importResult.duplicateNames.slice(0, 20).map((dup: any, idx: number) => (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="px-2 py-1">{dup.row}</td>
+                              <td className="px-2 py-1 font-medium">{dup.name}</td>
+                              <td className="px-2 py-1">{dup.email}</td>
+                              <td className="px-2 py-1">{dup.mobile}</td>
+                              <td className="px-2 py-1 text-gray-500">Row {dup.firstOccurrenceRow}</td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                       {importResult.duplicateNames.length > 20 && (
@@ -1585,35 +1454,21 @@ export default function MembersPage() {
                     </div>
                   )}
 
-                  <div className="flex flex-col gap-3">
-                    <div className="flex gap-3">
-                      <button
-                        onClick={handleConfirmDuplicateNames}
-                        disabled={importing || editingDuplicateName !== null}
-                        className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:bg-blue-400"
-                      >
-                        {importing ? 'Importing...' : 'Include As-Is'}
-                      </button>
-                      <button
-                        onClick={handleEditAndIncludeDuplicateNames}
-                        disabled={importing || editingDuplicateName !== null}
-                        className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition disabled:bg-green-400"
-                      >
-                        {importing ? 'Importing...' : 'Edit & Include'}
-                      </button>
-                      <button
-                        onClick={handleSkipDuplicateNames}
-                        disabled={importing || editingDuplicateName !== null}
-                        className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition disabled:bg-gray-100"
-                      >
-                        {importing ? 'Importing...' : 'Skip'}
-                      </button>
-                    </div>
-                    {editingDuplicateName !== null && (
-                      <p className="text-xs text-blue-600 text-center">
-                        Please finish editing the current row before proceeding.
-                      </p>
-                    )}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleConfirmDuplicateNames}
+                      disabled={importing}
+                      className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:bg-blue-400"
+                    >
+                      {importing ? 'Importing...' : 'Yes, Include Duplicate Names'}
+                    </button>
+                    <button
+                      onClick={handleSkipDuplicateNames}
+                      disabled={importing}
+                      className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition disabled:bg-gray-100"
+                    >
+                      {importing ? 'Importing...' : 'Skip Duplicate Names'}
+                    </button>
                   </div>
                 </div>
               </div>

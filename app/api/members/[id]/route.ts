@@ -13,7 +13,7 @@ export async function PUT(
       email, 
       mobile, 
       membership_type, 
-      batch,
+      batch, 
       group,
       roll_no,
       image_url,
