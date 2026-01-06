@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { parseExcelFile, parseCSVFile } from '@/lib/xlsx-utils';
 
+type SkippedRecord = { row: number; name: string; email: string; mobile: string; reason: string };
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -78,10 +80,10 @@ export async function POST(request: NextRequest) {
     );
 
     // Process each row
-    const members = [];
-    const errors = [];
-    const skipped = [];
-    const duplicateNames = []; // Track duplicate names separately
+    const members: any[] = [];
+    const errors: Array<{ row: number; name?: string; email?: string; mobile?: string; error: string }> = [];
+    const skipped: SkippedRecord[] = [];
+    const duplicateNames: Array<{ row: number; name: string; email: string; mobile: string; firstOccurrenceRow: number; reason: string }> = []; // Track duplicate names separately
     const duplicateEmailGroups = new Map<string, any[]>(); // email -> array of duplicate records
     const duplicateMobileGroups = new Map<string, any[]>(); // mobile -> array of duplicate records
     const imageUploadPromises = [];
