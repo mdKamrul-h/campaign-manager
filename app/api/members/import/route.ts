@@ -8,7 +8,6 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    const includeDuplicateNames = formData.get('includeDuplicateNames') === 'true';
     const editedDuplicatesJson = formData.get('editedDuplicates') as string | null;
     const editedDuplicates: Array<any> = [];
     
@@ -80,14 +79,11 @@ export async function POST(request: NextRequest) {
     const members: any[] = [];
     const errors: Array<{ row: number; name?: string; email?: string; mobile?: string; error: string }> = [];
     const skipped: SkippedRecord[] = [];
-    const duplicateNames: Array<{ row: number; name: string; email: string; mobile: string; firstOccurrenceRow: number; reason: string }> = []; // Track duplicate names separately
     const duplicateMobileGroups = new Map<string, any[]>(); // mobile -> array of duplicate records
     const imageUploadPromises = [];
     
     // Track mobiles within the current file to prevent duplicates in the same import
     const fileMobiles = new Map<string, any>(); // mobile -> first record
-    // Track names within the file to detect duplicates
-    const fileNames = new Map<string, number>(); // name -> row number (first occurrence)
 
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
@@ -272,36 +268,43 @@ export async function POST(request: NextRequest) {
         const remarks = row['Remarks'] || row['remarks'] || '';
         // imageUrl is already defined above at line 164
         
+        // Helper to normalize optional string fields (empty string -> null)
+        const normalizeString = (value: any): string | null => {
+          if (!value) return null;
+          const trimmed = String(value).trim();
+          return trimmed === '' ? null : trimmed;
+        };
+
         // Prepare member data structure for duplicate detection (with all fields)
         const memberData = {
           row: rowNumber,
           name: nameTrimmed,
           email: emailValue,
           mobile: mobileTrimmed,
-          name_bangla: nameBangla ? nameBangla.toString().trim() : '',
+          name_bangla: normalizeString(nameBangla),
           membership_type,
-          batch: batchValue,
-          group: group ? group.toString().trim() : '',
-          roll_no: rollNo ? rollNo.toString().trim() : '',
-          blood_group: bloodGroup ? bloodGroup.toString().trim() : '',
+          batch: normalizeString(batchValue),
+          group: normalizeString(group),
+          roll_no: normalizeString(rollNo),
+          blood_group: normalizeString(bloodGroup),
           birthday_month: birthdayMonth ? parseInt(birthdayMonth.toString()) : null,
           birthday_day: birthdayDay ? parseInt(birthdayDay.toString()) : null,
-          higher_study_1: higherStudy1 ? higherStudy1.toString().trim() : '',
-          hs_1_institute: hs1Institute ? hs1Institute.toString().trim() : '',
-          higher_study_2: higherStudy2 ? higherStudy2.toString().trim() : '',
-          hs_2_institute: hs2Institute ? hs2Institute.toString().trim() : '',
-          school: school ? school.toString().trim() : '',
-          home_district: homeDistrict ? homeDistrict.toString().trim() : '',
-          organization: organization ? organization.toString().trim() : '',
-          position: position ? position.toString().trim() : '',
-          department: department ? department.toString().trim() : '',
-          profession: profession ? profession.toString().trim() : '',
-          nrb_country: nrbCountry ? nrbCountry.toString().trim() : '',
-          living_in_area: livingInArea ? livingInArea.toString().trim() : '',
-          job_location: jobLocation ? jobLocation.toString().trim() : '',
-          other_club_member: otherClubMember ? otherClubMember.toString().trim() : '',
-          remarks: remarks ? remarks.toString().trim() : '',
-          image_url: imageUrl || ''
+          higher_study_1: normalizeString(higherStudy1),
+          hs_1_institute: normalizeString(hs1Institute),
+          higher_study_2: normalizeString(higherStudy2),
+          hs_2_institute: normalizeString(hs2Institute),
+          school: normalizeString(school),
+          home_district: normalizeString(homeDistrict),
+          organization: normalizeString(organization),
+          position: normalizeString(position),
+          department: normalizeString(department),
+          profession: normalizeString(profession),
+          nrb_country: normalizeString(nrbCountry),
+          living_in_area: normalizeString(livingInArea),
+          job_location: normalizeString(jobLocation),
+          other_club_member: normalizeString(otherClubMember),
+          remarks: normalizeString(remarks),
+          image_url: normalizeString(imageUrl)
         };
 
         // Check for duplicates in database (ONLY mobile)
@@ -351,26 +354,8 @@ export async function POST(request: NextRequest) {
         // Store first occurrence for future duplicate detection
         fileMobiles.set(mobileTrimmed, memberData);
 
-        // Check for duplicate names (but don't skip - just track for user confirmation)
-        const isDuplicateName = fileNames.has(nameTrimmed);
-        if (isDuplicateName && !includeDuplicateNames) {
-          duplicateNames.push({
-            row: rowNumber,
-            name: nameTrimmed,
-            email: emailValue,
-            mobile: mobileTrimmed,
-            firstOccurrenceRow: fileNames.get(nameTrimmed) || rowNumber,
-            reason: 'Duplicate name found in this file'
-          });
-          // Skip adding this member to the array until user confirms
-          continue;
-        } else if (!isDuplicateName) {
-          // First occurrence of this name
-          fileNames.set(nameTrimmed, rowNumber);
-        }
-
         // Handle image if provided as base64 or URL
-        let finalImageUrl = imageUrl;
+        let finalImageUrl = memberData.image_url;
 
         // If image is base64, upload to Supabase Storage
         if (imageUrl && imageUrl.startsWith('data:image')) {
@@ -396,38 +381,40 @@ export async function POST(request: NextRequest) {
           } catch (imgError) {
             console.error(`Error uploading image for row ${rowNumber}:`, imgError);
             // Continue without image if upload fails
+            finalImageUrl = null;
           }
         }
 
         // Add valid member to import list (edited duplicates already handled at the beginning)
+        // All optional fields are already normalized to null in memberData
         members.push({
           name: memberData.name,
-          name_bangla: memberData.name_bangla || null,
+          name_bangla: memberData.name_bangla,
           email: memberData.email,
-          mobile: mobileTrimmed,
+          mobile: memberData.mobile, // Already trimmed
           membership_type: memberData.membership_type,
-          batch: memberData.batch || null,
-          group: memberData.group || null,
-          roll_no: memberData.roll_no || null,
-          image_url: finalImageUrl || null,
-          blood_group: memberData.blood_group || null,
+          batch: memberData.batch,
+          group: memberData.group,
+          roll_no: memberData.roll_no,
+          image_url: finalImageUrl,
+          blood_group: memberData.blood_group,
           birthday_month: memberData.birthday_month,
           birthday_day: memberData.birthday_day,
-          higher_study_1: memberData.higher_study_1 || null,
-          hs_1_institute: memberData.hs_1_institute || null,
-          higher_study_2: memberData.higher_study_2 || null,
-          hs_2_institute: memberData.hs_2_institute || null,
-          school: memberData.school || null,
-          home_district: memberData.home_district || null,
-          organization: memberData.organization || null,
-          position: memberData.position || null,
-          department: memberData.department || null,
-          profession: memberData.profession || null,
-          nrb_country: memberData.nrb_country || null,
-          living_in_area: memberData.living_in_area || null,
-          job_location: memberData.job_location || null,
-          other_club_member: memberData.other_club_member || null,
-          remarks: memberData.remarks || null
+          higher_study_1: memberData.higher_study_1,
+          hs_1_institute: memberData.hs_1_institute,
+          higher_study_2: memberData.higher_study_2,
+          hs_2_institute: memberData.hs_2_institute,
+          school: memberData.school,
+          home_district: memberData.home_district,
+          organization: memberData.organization,
+          position: memberData.position,
+          department: memberData.department,
+          profession: memberData.profession,
+          nrb_country: memberData.nrb_country,
+          living_in_area: memberData.living_in_area,
+          job_location: memberData.job_location,
+          other_club_member: memberData.other_club_member,
+          remarks: memberData.remarks
         });
 
         // Add to file sets to prevent duplicates within the same import
@@ -447,7 +434,7 @@ export async function POST(request: NextRequest) {
       allDuplicateGroups.push({ type: 'mobile', key: mobile, records });
     });
     
-    // If there are duplicate email/mobile records and no edited duplicates provided, return for user confirmation
+    // If there are duplicate mobile records and no edited duplicates provided, return for user confirmation
     if (allDuplicateGroups.length > 0 && editedDuplicates.length === 0) {
       // Import valid members (non-duplicates) first
       let validMembersImported = 0;
@@ -478,47 +465,6 @@ export async function POST(request: NextRequest) {
           requiresDuplicateConfirmation: true,
           duplicateGroups: allDuplicateGroups,
           message: `Found ${allDuplicateGroups.length} duplicate group(s) (mobile number). Please review and modify or approve them.`,
-          validMembersCount: members.length,
-          validMembersImported: validMembersImported,
-          errors: errors.length > 0 ? errors : undefined,
-          skipped: skipped.length > 0 ? skipped : undefined
-        },
-        { status: 200 }
-      );
-    }
-    
-    // If there are duplicate names and user hasn't confirmed to include them, 
-    // import valid members first, then return duplicate names for confirmation
-    if (duplicateNames.length > 0 && !includeDuplicateNames) {
-      // Import valid members (non-duplicates) first
-      let validMembersImported = 0;
-      if (members.length > 0) {
-        const batchSize = 50;
-        for (let i = 0; i < members.length; i += batchSize) {
-          const batch = members.slice(i, i + batchSize);
-          try {
-            const { data: upserted, error: upsertError } = await supabaseAdmin
-              .from('members')
-              .upsert(batch, {
-                onConflict: 'mobile',
-                ignoreDuplicates: false
-              })
-              .select();
-
-            if (!upsertError && upserted) {
-              validMembersImported += upserted.length;
-            }
-          } catch (err) {
-            console.error('Error importing valid members:', err);
-          }
-        }
-      }
-
-      return NextResponse.json(
-        { 
-          requiresConfirmation: true,
-          duplicateNames: duplicateNames,
-          message: `Found ${duplicateNames.length} duplicate name(s) in the file. Do you want to include them?`,
           validMembersCount: members.length,
           validMembersImported: validMembersImported,
           errors: errors.length > 0 ? errors : undefined,
@@ -637,8 +583,7 @@ export async function POST(request: NextRequest) {
       skipped: skipped.length, // Only mobile duplicates
       total: data.length,
       errors: allErrors.length > 0 ? allErrors : undefined,
-      skippedDetails: skipped.length > 0 ? skipped.slice(0, 20) : undefined, // Show first 20 skipped for reference
-      duplicateNamesIncluded: includeDuplicateNames ? duplicateNames.length : 0
+      skippedDetails: skipped.length > 0 ? skipped.slice(0, 20) : undefined // Show first 20 skipped for reference
     });
   } catch (error: any) {
     console.error('Import error:', error);
