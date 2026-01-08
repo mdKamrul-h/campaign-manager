@@ -438,10 +438,14 @@ export async function POST(request: NextRequest) {
     if (allDuplicateGroups.length > 0 && editedDuplicates.length === 0) {
       // Import valid members (non-duplicates) first
       let validMembersImported = 0;
+      const duplicateImportErrors = [];
+      
       if (members.length > 0) {
         const batchSize = 50;
         for (let i = 0; i < members.length; i += batchSize) {
           const batch = members.slice(i, i + batchSize);
+          const batchStartRow = i + 2;
+          
           try {
             const { data: upserted, error: upsertError } = await supabaseAdmin
               .from('members')
@@ -451,11 +455,48 @@ export async function POST(request: NextRequest) {
               })
               .select();
 
-            if (!upsertError && upserted) {
+            if (upsertError) {
+              console.error(`Error importing valid members batch (rows ${batchStartRow}-${batchStartRow + batch.length - 1}):`, upsertError);
+              // Try individual inserts
+              for (let j = 0; j < batch.length; j++) {
+                try {
+                  const { data: singleUpserted, error: singleError } = await supabaseAdmin
+                    .from('members')
+                    .upsert([batch[j]], {
+                      onConflict: 'mobile',
+                      ignoreDuplicates: false
+                    })
+                    .select();
+
+                  if (!singleError && singleUpserted && Array.isArray(singleUpserted) && singleUpserted.length > 0) {
+                    validMembersImported += singleUpserted.length;
+                  } else if (singleError) {
+                    duplicateImportErrors.push({
+                      row: batchStartRow + j,
+                      error: singleError.message || 'Failed to import valid member'
+                    });
+                  }
+                } catch (singleErr: any) {
+                  console.error(`Error importing individual member at row ${batchStartRow + j}:`, singleErr);
+                  duplicateImportErrors.push({
+                    row: batchStartRow + j,
+                    error: singleErr.message || 'Failed to import valid member'
+                  });
+                }
+              }
+            } else if (upserted && Array.isArray(upserted) && upserted.length > 0) {
               validMembersImported += upserted.length;
+            } else {
+              console.warn(`Valid members batch returned no data for rows ${batchStartRow}-${batchStartRow + batch.length - 1}`);
             }
-          } catch (err) {
-            console.error('Error importing valid members:', err);
+          } catch (err: any) {
+            console.error(`Exception importing valid members batch (rows ${batchStartRow}-${batchStartRow + batch.length - 1}):`, err);
+            for (let j = 0; j < batch.length; j++) {
+              duplicateImportErrors.push({
+                row: batchStartRow + j,
+                error: err.message || 'Failed to import valid member'
+              });
+            }
           }
         }
       }
@@ -467,7 +508,9 @@ export async function POST(request: NextRequest) {
           message: `Found ${allDuplicateGroups.length} duplicate group(s) (mobile number). Please review and modify or approve them.`,
           validMembersCount: members.length,
           validMembersImported: validMembersImported,
-          errors: errors.length > 0 ? errors : undefined,
+          errors: errors.length > 0 || duplicateImportErrors.length > 0 
+            ? [...errors, ...duplicateImportErrors] 
+            : undefined,
           skipped: skipped.length > 0 ? skipped : undefined
         },
         { status: 200 }
@@ -475,6 +518,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (members.length === 0) {
+      console.log('No members to import after validation. Errors:', errors.length, 'Skipped:', skipped.length);
       return NextResponse.json(
         { 
           error: 'No new members to import', 
@@ -486,6 +530,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log(`Starting bulk import: ${members.length} members to process in batches`);
+
     // Upsert members (update if exists, insert if new)
     // Use mobile as the conflict key since it has a unique constraint
     const upsertedMembers = [];
@@ -495,6 +541,7 @@ export async function POST(request: NextRequest) {
     const batchSize = 50; // Smaller batches for more reliable upserts
     for (let i = 0; i < members.length; i += batchSize) {
       const batch = members.slice(i, i + batchSize);
+      const batchStartRow = i + 2; // +2 because Excel rows start at 1 and we skip header
       
       try {
         // Use upsert to update existing records or insert new ones
@@ -508,11 +555,14 @@ export async function POST(request: NextRequest) {
           .select();
 
         if (upsertError) {
-          console.error(`Batch upsert error (rows ${i + 2}-${i + batch.length + 1}):`, upsertError);
+          console.error(`Batch upsert error (rows ${batchStartRow}-${batchStartRow + batch.length - 1}):`, upsertError);
+          console.error('Error details:', JSON.stringify(upsertError, null, 2));
           
           // If batch fails, try one by one
           for (let j = 0; j < batch.length; j++) {
             const member = batch[j];
+            const rowNumber = batchStartRow + j;
+            
             try {
               const { data: singleUpserted, error: singleError } = await supabaseAdmin
                 .from('members')
@@ -520,51 +570,94 @@ export async function POST(request: NextRequest) {
                   onConflict: 'mobile',
                   ignoreDuplicates: false
                 })
-                .select()
-                .single();
+                .select();
 
               if (singleError) {
+                console.error(`Single upsert error for row ${rowNumber}:`, singleError);
                 // Handle mobile conflict error (unique constraint violation)
                 if (singleError.code === '23505' && singleError.message?.includes('mobile')) {
                   // Mobile already exists - this should have been caught earlier, but handle gracefully
                   insertErrors.push({
-                    row: i + j + 2,
+                    row: rowNumber,
                     name: member.name,
                     email: member.email,
                     mobile: member.mobile,
                     error: 'Mobile number already exists in database (unique constraint violation)'
                   });
-                } else {
+                } else if (singleError.code === '23505' && singleError.message?.includes('email')) {
+                  // Email conflict
                   insertErrors.push({
-                    row: i + j + 2,
+                    row: rowNumber,
                     name: member.name,
                     email: member.email,
                     mobile: member.mobile,
-                    error: singleError.message || 'Upsert failed'
+                    error: 'Email already exists in database (unique constraint violation)'
+                  });
+                } else {
+                  insertErrors.push({
+                    row: rowNumber,
+                    name: member.name,
+                    email: member.email,
+                    mobile: member.mobile,
+                    error: singleError.message || `Upsert failed: ${singleError.code || 'Unknown error'}`
                   });
                 }
+              } else if (singleUpserted && Array.isArray(singleUpserted) && singleUpserted.length > 0) {
+                upsertedMembers.push(...singleUpserted);
               } else if (singleUpserted) {
+                // Handle case where singleUpserted is a single object (shouldn't happen with select(), but just in case)
                 upsertedMembers.push(singleUpserted);
+              } else {
+                // No data returned but no error - might be a silent failure
+                console.warn(`No data returned for row ${rowNumber}, but no error reported`);
+                insertErrors.push({
+                  row: rowNumber,
+                  name: member.name,
+                  email: member.email,
+                  mobile: member.mobile,
+                  error: 'Upsert completed but no data returned'
+                });
               }
             } catch (err: any) {
+              console.error(`Exception during single upsert for row ${rowNumber}:`, err);
               insertErrors.push({
-                row: i + j + 2,
+                row: rowNumber,
                 name: member.name,
                 email: member.email,
                 mobile: member.mobile,
-                error: err.message || 'Unexpected error'
+                error: err.message || 'Unexpected error during upsert'
               });
             }
           }
-        } else if (upserted) {
+        } else if (upserted && Array.isArray(upserted) && upserted.length > 0) {
           upsertedMembers.push(...upserted);
+          console.log(`Successfully upserted batch ${Math.floor(i / batchSize) + 1}: ${upserted.length} members`);
+        } else {
+          // No error but also no data - this shouldn't happen, but log it
+          console.warn(`Batch upsert returned no data for batch starting at row ${batchStartRow}`);
+          // Try individual inserts to get better error messages
+          for (let j = 0; j < batch.length; j++) {
+            insertErrors.push({
+              row: batchStartRow + j,
+              name: batch[j].name,
+              email: batch[j].email,
+              mobile: batch[j].mobile,
+              error: 'Batch upsert returned no data'
+            });
+          }
         }
       } catch (batchError: any) {
-        console.error(`Batch processing error:`, batchError);
-        insertErrors.push({
-          row: i + 2,
-          error: batchError.message || 'Batch processing failed'
-        });
+        console.error(`Batch processing exception (rows ${batchStartRow}-${batchStartRow + batch.length - 1}):`, batchError);
+        // Add errors for all members in this batch
+        for (let j = 0; j < batch.length; j++) {
+          insertErrors.push({
+            row: batchStartRow + j,
+            name: batch[j].name,
+            email: batch[j].email,
+            mobile: batch[j].mobile,
+            error: batchError.message || 'Batch processing failed'
+          });
+        }
       }
     }
 
@@ -576,13 +669,30 @@ export async function POST(request: NextRequest) {
     // So we'll show total upserted (which includes both new and updated)
     const totalUpserted = upsertedMembers.length;
     
+    console.log(`Import completed. Total processed: ${data.length}, Successfully imported: ${totalUpserted}, Errors: ${allErrors.length}, Skipped: ${skipped.length}`);
+    
+    // If no members were imported and there are errors, return error status
+    if (totalUpserted === 0 && allErrors.length > 0) {
+      console.error('Import failed: No members imported and errors occurred');
+      return NextResponse.json({
+        success: false,
+        error: `Failed to import members. ${allErrors.length} error(s) occurred.`,
+        imported: 0,
+        updated: 0,
+        skipped: skipped.length,
+        total: data.length,
+        errors: allErrors.slice(0, 50), // Limit to first 50 errors
+        skippedDetails: skipped.length > 0 ? skipped.slice(0, 20) : undefined
+      }, { status: 400 });
+    }
+    
     return NextResponse.json({
       success: true,
       imported: totalUpserted,
       updated: totalUpserted, // All upserted records (both new and updated)
       skipped: skipped.length, // Only mobile duplicates
       total: data.length,
-      errors: allErrors.length > 0 ? allErrors : undefined,
+      errors: allErrors.length > 0 ? allErrors.slice(0, 50) : undefined, // Limit to first 50 errors
       skippedDetails: skipped.length > 0 ? skipped.slice(0, 20) : undefined // Show first 20 skipped for reference
     });
   } catch (error: any) {
