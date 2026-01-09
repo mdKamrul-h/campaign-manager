@@ -49,8 +49,6 @@ export default function MembersPage() {
     total?: number;
     errors?: any[]; 
     skippedDetails?: Array<{ row: number; name: string; email: string; mobile?: string; reason: string }>;
-    requiresDuplicateConfirmation?: boolean;
-    duplicateGroups?: Array<{ type: string; key: string; records: any[] }>;
     message?: string;
     validMembersCount?: number;
     validMembersImported?: number;
@@ -60,8 +58,6 @@ export default function MembersPage() {
     availableColumns?: string[];
   } | null>(null);
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
-  const [editedDuplicates, setEditedDuplicates] = useState<Map<number, any>>(new Map());
-  const [editingDuplicateRow, setEditingDuplicateRow] = useState<number | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -380,13 +376,6 @@ export default function MembersPage() {
       console.log('Import result:', result);
 
       if (response.ok) {
-        // Check if confirmation is required for duplicate mobile numbers
-        if (result.requiresDuplicateConfirmation) {
-          setImportResult(result);
-          setImporting(false);
-          return; // Don't close modal, show duplicate confirmation dialog
-        }
-
         setImportResult(result);
         await refreshMembers(); // Refresh members from context
         await fetchBatches(); // Also refresh batches
@@ -399,7 +388,7 @@ export default function MembersPage() {
           setImportFile(null);
           setPendingImportFile(null);
           setImportResult(null);
-        }, 3000);
+        }, 5000); // Increased timeout to give user time to review results
       } else {
         const errorMsg = result.error || `Failed to import members (Status: ${response.status})`;
         console.error('Import failed:', errorMsg, result);
@@ -420,64 +409,6 @@ export default function MembersPage() {
     }
   };
 
-  const handleApproveDuplicates = async () => {
-    if (!pendingImportFile) return;
-    
-    setImporting(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', pendingImportFile);
-      formData.append('editedDuplicates', JSON.stringify(Array.from(editedDuplicates.values())));
-
-      const response = await fetch('/api/members/import', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        setImportResult(result);
-        await refreshMembers();
-        await fetchBatches();
-        window.dispatchEvent(new CustomEvent('memberUpdated'));
-        
-        setTimeout(() => {
-          setShowImportModal(false);
-          setImportFile(null);
-          setPendingImportFile(null);
-          setImportResult(null);
-          setEditedDuplicates(new Map());
-          setEditingDuplicateRow(null);
-        }, 3000);
-      } else {
-        alert(result.error || 'Failed to import members');
-        setImportResult(result);
-      }
-    } catch (error) {
-      console.error('Import error:', error);
-      alert('Failed to import members');
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const handleEditDuplicate = (row: number, field: string, value: string) => {
-    const updated = new Map(editedDuplicates);
-    const existing = updated.get(row) || {};
-    updated.set(row, { ...existing, [field]: value });
-    setEditedDuplicates(updated);
-  };
-
-  const getDuplicateValue = (record: any, field: string) => {
-    const edited = editedDuplicates.get(record.row);
-    const value = edited?.[field] ?? record[field] ?? '';
-    // Format mobile number for display (convert scientific notation to regular format)
-    if (field === 'mobile' && value) {
-      return formatMobileForDisplay(value);
-    }
-    return value;
-  };
 
 
   const downloadTemplate = () => {
@@ -1485,107 +1416,7 @@ export default function MembersPage() {
               )}
             </div>
 
-            {importResult && importResult.requiresDuplicateConfirmation && (
-              <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                <div className="space-y-4">
-                  <div>
-                    <p className="font-semibold text-orange-800 mb-2">
-                      ⚠ {importResult.message || 'Duplicate mobile number found'}
-                    </p>
-                    <p className="text-sm text-gray-700 mb-3">
-                      Found {importResult.duplicateGroups?.length || 0} duplicate group(s) (mobile number). 
-                      Please review each pair/group below. You can edit the mobile number to make it unique, or approve to skip.
-                    </p>
-                    {importResult.validMembersImported !== undefined && importResult.validMembersImported > 0 && (
-                      <p className="text-sm text-green-700 mb-3 font-medium">
-                        ✓ {importResult.validMembersImported} member(s) with unique mobile numbers have been imported.
-                      </p>
-                    )}
-                  </div>
-                  
-                  {importResult.duplicateGroups && importResult.duplicateGroups.map((group: any, groupIdx: number) => (
-                    <div key={groupIdx} className="border border-orange-300 rounded p-3 bg-white">
-                      <p className="text-xs font-semibold text-gray-700 mb-2">
-                        Duplicate Mobile Number: <span className="font-mono">{formatMobileForDisplay(group.key)}</span>
-                      </p>
-                      <div className="space-y-2">
-                        {group.records.map((record: any, recordIdx: number) => (
-                          <div key={recordIdx} className={`p-2 rounded border ${editingDuplicateRow === record.row ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}>
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              <div>
-                                <label className="text-gray-600">Row {record.row}</label>
-                                <input
-                                  type="text"
-                                  value={getDuplicateValue(record, 'name')}
-                                  onChange={(e) => handleEditDuplicate(record.row, 'name', e.target.value)}
-                                  onFocus={() => setEditingDuplicateRow(record.row)}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs mt-1"
-                                  placeholder="Name"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-gray-600">Email</label>
-                                <input
-                                  type="email"
-                                  value={getDuplicateValue(record, 'email')}
-                                  onChange={(e) => handleEditDuplicate(record.row, 'email', e.target.value)}
-                                  onFocus={() => setEditingDuplicateRow(record.row)}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs mt-1"
-                                  placeholder="Email"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-gray-600">Mobile</label>
-                                <input
-                                  type="tel"
-                                  value={getDuplicateValue(record, 'mobile')}
-                                  onChange={(e) => handleEditDuplicate(record.row, 'mobile', e.target.value)}
-                                  onFocus={() => setEditingDuplicateRow(record.row)}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-xs mt-1"
-                                  placeholder="Mobile"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-gray-600">Reason</label>
-                                <p className="text-xs text-gray-500 mt-1">{record.reason}</p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={handleApproveDuplicates}
-                      disabled={importing}
-                      className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition disabled:bg-green-400"
-                    >
-                      {importing ? 'Importing...' : 'Approve & Import (with edits)'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowImportModal(false);
-                        setImportFile(null);
-                        setPendingImportFile(null);
-                        setImportResult(null);
-                        setEditedDuplicates(new Map());
-                        setEditingDuplicateRow(null);
-                        refreshMembers();
-                        fetchBatches();
-                      }}
-                      disabled={importing}
-                      className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition disabled:bg-gray-100"
-                    >
-                      Skip Duplicates
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {importResult && !importResult.requiresDuplicateConfirmation && (
+            {importResult && (
               <div className={`mb-6 p-4 rounded-lg ${
                 importResult.error || (importResult.errors && importResult.errors.length > 0)
                   ? 'bg-red-50 border border-red-200'
@@ -1599,19 +1430,16 @@ export default function MembersPage() {
                       ✗ {importResult.error}
                     </p>
                   ) : (
-                    <p className="font-semibold text-green-700">
-                      ✓ {importResult.imported || 0} members processed successfully
-                      {importResult.updated && importResult.updated > 0 && (
-                        <span className="text-sm font-normal text-gray-600 ml-2">
-                          ({importResult.updated} updated, {(importResult.imported || 0) - importResult.updated} new)
-                        </span>
+                    <>
+                      <p className="font-semibold text-green-700">
+                        ✓ {importResult.imported || 0} members imported successfully
+                      </p>
+                      {importResult.skipped && importResult.skipped > 0 && (
+                        <p className="text-sm text-orange-700">
+                          ⚠ {importResult.skipped} members skipped (mobile number already exists in database or duplicate in file)
+                        </p>
                       )}
-                    </p>
-                  )}
-                  {importResult.skipped && importResult.skipped > 0 && (
-                    <p className="text-sm text-gray-700">
-                      ⚠ {importResult.skipped} members skipped (duplicate mobile number)
-                    </p>
+                    </>
                   )}
                   {importResult.total && (
                     <p className="text-xs text-gray-600">
