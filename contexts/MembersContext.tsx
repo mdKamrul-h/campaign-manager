@@ -37,34 +37,46 @@ export function MembersProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       
       if (Array.isArray(data)) {
-        // Debug: Log sample member to verify name_bangla is in the response
-        if (data.length > 0) {
-          const sampleMember = data[0];
-          console.log('MembersContext - Sample member received:', {
-            id: sampleMember.id,
-            name: sampleMember.name,
-            hasNameBangla: 'name_bangla' in sampleMember,
-            name_bangla: sampleMember.name_bangla,
-            name_bangla_type: typeof sampleMember.name_bangla,
-            allKeys: Object.keys(sampleMember)
-          });
-          
-          // Check if any member has name_bangla
-          const membersWithBangla = data.filter(m => m.name_bangla && m.name_bangla.trim());
-          console.log(`MembersContext - Members with Bangla names: ${membersWithBangla.length} out of ${data.length}`);
-          
-          // Log a specific member if we're looking for Ali Asif Khan
-          const aliMember = data.find(m => m.name && m.name.includes('Ali Asif'));
-          if (aliMember) {
-            console.log('MembersContext - Found Ali Asif Khan member:', {
-              id: aliMember.id,
-              name: aliMember.name,
-              name_bangla: aliMember.name_bangla,
-              hasNameBangla: !!(aliMember.name_bangla && typeof aliMember.name_bangla === 'string' && aliMember.name_bangla.trim())
+        // Set members immediately to avoid blocking UI
+        setMembers(data);
+        
+        // Do debug logging asynchronously to avoid blocking
+        if (process.env.NODE_ENV === 'development' && data.length > 0) {
+          // Use requestIdleCallback or setTimeout to defer heavy operations
+          const logDebugInfo = () => {
+            const sampleMember = data[0];
+            console.log('MembersContext - Sample member received:', {
+              id: sampleMember.id,
+              name: sampleMember.name,
+              hasNameBangla: 'name_bangla' in sampleMember,
+              name_bangla: sampleMember.name_bangla,
+              name_bangla_type: typeof sampleMember.name_bangla,
+              allKeys: Object.keys(sampleMember)
             });
+            
+            // Check if any member has name_bangla (defer this heavy operation)
+            const membersWithBangla = data.filter(m => m.name_bangla && m.name_bangla.trim());
+            console.log(`MembersContext - Members with Bangla names: ${membersWithBangla.length} out of ${data.length}`);
+            
+            // Log a specific member if we're looking for Ali Asif Khan
+            const aliMember = data.find(m => m.name && m.name.includes('Ali Asif'));
+            if (aliMember) {
+              console.log('MembersContext - Found Ali Asif Khan member:', {
+                id: aliMember.id,
+                name: aliMember.name,
+                name_bangla: aliMember.name_bangla,
+                hasNameBangla: !!(aliMember.name_bangla && typeof aliMember.name_bangla === 'string' && aliMember.name_bangla.trim())
+              });
+            }
+          };
+          
+          // Defer to next tick to avoid blocking
+          if (typeof requestIdleCallback !== 'undefined') {
+            requestIdleCallback(logDebugInfo, { timeout: 1000 });
+          } else {
+            setTimeout(logDebugInfo, 0);
           }
         }
-        setMembers(data);
       } else if (data && data.error) {
         throw new Error(data.error);
       } else {
@@ -84,34 +96,66 @@ export function MembersProvider({ children }: { children: ReactNode }) {
     fetchMembers();
 
     // Listen for member updates from other pages
+    // Debounce to avoid multiple rapid refreshes
+    let memberUpdateTimeout: NodeJS.Timeout | null = null;
     const handleMemberUpdate = () => {
-      console.log('Member updated event received, refreshing members...');
-      fetchMembers();
+      if (memberUpdateTimeout) {
+        clearTimeout(memberUpdateTimeout);
+      }
+      // Debounce: wait 300ms before refreshing to batch multiple updates
+      memberUpdateTimeout = setTimeout(() => {
+        console.log('Member updated event received, refreshing members...');
+        fetchMembers();
+      }, 300);
     };
     
     window.addEventListener('memberUpdated', handleMemberUpdate);
     
     return () => {
+      if (memberUpdateTimeout) {
+        clearTimeout(memberUpdateTimeout);
+      }
       window.removeEventListener('memberUpdated', handleMemberUpdate);
     };
   }, []);
 
   // Refresh members when page becomes visible (user navigates back or switches tabs)
   useEffect(() => {
+    let visibilityTimeout: NodeJS.Timeout | null = null;
+    let focusTimeout: NodeJS.Timeout | null = null;
+    
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        fetchMembers();
+        // Debounce visibility change to avoid rapid refreshes
+        if (visibilityTimeout) {
+          clearTimeout(visibilityTimeout);
+        }
+        visibilityTimeout = setTimeout(() => {
+          fetchMembers();
+        }, 500);
       }
     };
 
     const handleFocus = () => {
-      fetchMembers();
+      // Debounce focus events to avoid blocking UI
+      if (focusTimeout) {
+        clearTimeout(focusTimeout);
+      }
+      focusTimeout = setTimeout(() => {
+        fetchMembers();
+      }, 500);
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      if (visibilityTimeout) {
+        clearTimeout(visibilityTimeout);
+      }
+      if (focusTimeout) {
+        clearTimeout(focusTimeout);
+      }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };

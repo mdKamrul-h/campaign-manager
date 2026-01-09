@@ -43,7 +43,7 @@ export default function MembersPage() {
   const [importing, setImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<{ 
-    imported: number; 
+    imported?: number; 
     updated?: number;
     skipped?: number;
     total?: number;
@@ -54,6 +54,10 @@ export default function MembersPage() {
     message?: string;
     validMembersCount?: number;
     validMembersImported?: number;
+    error?: string;
+    success?: boolean;
+    errorSummary?: string[];
+    availableColumns?: string[];
   } | null>(null);
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
   const [editedDuplicates, setEditedDuplicates] = useState<Map<number, any>>(new Map());
@@ -1583,19 +1587,27 @@ export default function MembersPage() {
 
             {importResult && !importResult.requiresDuplicateConfirmation && (
               <div className={`mb-6 p-4 rounded-lg ${
-                importResult.errors && importResult.errors.length > 0
+                importResult.error || (importResult.errors && importResult.errors.length > 0)
+                  ? 'bg-red-50 border border-red-200'
+                  : importResult.errors && importResult.errors.length > 0
                   ? 'bg-yellow-50 border border-yellow-200'
                   : 'bg-green-50 border border-green-200'
               }`}>
                 <div className="space-y-2">
-                  <p className="font-semibold text-green-700">
-                    ✓ {importResult.imported || 0} members processed successfully
-                    {importResult.updated && importResult.updated > 0 && (
-                      <span className="text-sm font-normal text-gray-600 ml-2">
-                        ({importResult.updated} updated, {importResult.imported - importResult.updated} new)
-                      </span>
-                    )}
-                  </p>
+                  {importResult.error ? (
+                    <p className="font-semibold text-red-700">
+                      ✗ {importResult.error}
+                    </p>
+                  ) : (
+                    <p className="font-semibold text-green-700">
+                      ✓ {importResult.imported || 0} members processed successfully
+                      {importResult.updated && importResult.updated > 0 && (
+                        <span className="text-sm font-normal text-gray-600 ml-2">
+                          ({importResult.updated} updated, {(importResult.imported || 0) - importResult.updated} new)
+                        </span>
+                      )}
+                    </p>
+                  )}
                   {importResult.skipped && importResult.skipped > 0 && (
                     <p className="text-sm text-gray-700">
                       ⚠ {importResult.skipped} members skipped (duplicate mobile number)
