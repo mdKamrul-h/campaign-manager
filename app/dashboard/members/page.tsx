@@ -117,12 +117,24 @@ export default function MembersPage() {
     
     let filtered = members;
 
-    // Filter by batch
+    // Filter by batch (normalize batch values to handle whitespace, null, undefined)
+    // This matches the batch counting logic in /api/members/batches
     if (filterBatch) {
       if (filterBatch === '(No Batch)') {
-        filtered = filtered.filter(m => !m.batch || m.batch.trim() === '');
+        // Match the counting logic: batch?.trim() || null becomes '(No Batch)'
+        filtered = filtered.filter(m => {
+          const memberBatch = m.batch?.toString().trim() || null;
+          return memberBatch === null || memberBatch === '';
+        });
       } else {
-        filtered = filtered.filter(m => m.batch === filterBatch);
+        // Normalize both sides for comparison (trim whitespace)
+        const normalizedFilterBatch = filterBatch.trim();
+        filtered = filtered.filter(m => {
+          // Match the counting logic: batch?.trim() || null
+          const memberBatch = m.batch?.toString().trim() || null;
+          // Only compare if memberBatch is not null (null means no batch)
+          return memberBatch !== null && memberBatch === normalizedFilterBatch;
+        });
       }
     }
 
