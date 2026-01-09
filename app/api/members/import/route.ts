@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     console.log(`Found ${existingMobiles.size} existing mobile numbers in database`);
 
     // Helper function to get value from row with flexible column matching
-    const getValue = (variations: string[]): string => {
+    const getValue = (row: any, variations: string[]): string => {
       // Try exact matches first
       for (const variation of variations) {
         const value = row[variation];
@@ -145,17 +145,17 @@ export async function POST(request: NextRequest) {
 
       try {
         // Extract required fields with flexible column matching
-        const name = getValue([
+        const name = getValue(row, [
           'Name', 'name', 'NAME', 'Full Name', 'FullName', 'full name', 'FULL NAME',
           'Name (English)', 'Name(English)', 'name_english', 'Member Name', 'member name'
         ]);
         
-        const email = getValue([
+        const email = getValue(row, [
           'Email', 'email', 'EMAIL', 'E-mail', 'E-Mail', 'e-mail', 'E-MAIL',
           'Email Address', 'email address', 'EMAIL ADDRESS', 'e_mail', 'E_MAIL'
         ]);
         
-        const mobile = getValue([
+        const mobile = getValue(row, [
           'Mobile', 'mobile', 'MOBILE', 'Phone', 'phone', 'PHONE',
           'Phone Number', 'phone number', 'PHONE NUMBER', 'Mobile Number', 'mobile number',
           'Contact', 'contact', 'CONTACT', 'Cell', 'cell', 'CELL'
@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
         fileMobiles.add(mobileTrimmed);
 
         // Extract optional fields
-        const membershipTypeRaw = getValue([
+        const membershipTypeRaw = getValue(row, [
           'Membership Type', 'membership_type', 'Membership', 'membership', 'MEMBERSHIP',
           'Type', 'type', 'TYPE', 'MembershipType', 'membershipType', 'Member Type'
         ]);
@@ -239,7 +239,7 @@ export async function POST(request: NextRequest) {
 
         // Extract all optional fields
         const nameBangla = row['Name (Bangla)'] || row['name_bangla'] || row['Name Bangla'] || '';
-        const batch = getValue(['Batch', 'batch', 'BATCH', 'Batch Number', 'batch number', 'Batch No', 'batch_no']);
+        const batch = getValue(row, ['Batch', 'batch', 'BATCH', 'Batch Number', 'batch number', 'Batch No', 'batch_no']);
         const group = row['Group'] || row['group'] || '';
         const rollNo = row['Roll No'] || row['roll_no'] || row['Roll No.'] || row['Roll Number'] || '';
         const bloodGroup = row['Blood Group'] || row['blood_group'] || '';
@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
         const jobLocation = row['Job Location'] || row['job_location'] || '';
         const otherClubMember = row['Other Club Member'] || row['other_club_member'] || '';
         const remarks = row['Remarks'] || row['remarks'] || '';
-        const imageUrl = getValue([
+        const imageUrl = getValue(row, [
           'Image URL', 'image_url', 'Image', 'image', 'Photo', 'photo', 'Photo URL', 'photo_url',
           'Picture', 'picture', 'Profile Picture', 'profile_picture'
         ]);
