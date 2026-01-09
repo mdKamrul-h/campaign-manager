@@ -347,6 +347,7 @@ export default function MembersPage() {
       return;
     }
 
+    console.log('Starting import, file:', importFile.name, 'size:', importFile.size);
     setImporting(true);
     setImportResult(null);
     setPendingImportFile(importFile); // Store file for potential re-import
@@ -355,12 +356,24 @@ export default function MembersPage() {
       const formData = new FormData();
       formData.append('file', importFile);
 
+      console.log('Sending request to /api/members/import');
       const response = await fetch('/api/members/import', {
         method: 'POST',
         body: formData,
       });
 
+      console.log('Response status:', response.status, 'ok:', response.ok);
+
+      // Check if response is actually JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error(`Server returned non-JSON response: ${text.substring(0, 200)}`);
+      }
+
       const result = await response.json();
+      console.log('Import result:', result);
 
       if (response.ok) {
         // Check if confirmation is required for duplicate mobile numbers
@@ -384,14 +397,22 @@ export default function MembersPage() {
           setImportResult(null);
         }, 3000);
       } else {
-        alert(result.error || 'Failed to import members');
+        const errorMsg = result.error || `Failed to import members (Status: ${response.status})`;
+        console.error('Import failed:', errorMsg, result);
+        alert(errorMsg);
         setImportResult(result);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Import error:', error);
-      alert('Failed to import members');
+      const errorMessage = error.message || 'Failed to import members. Please check the console for details.';
+      alert(errorMessage);
+      setImportResult({
+        error: errorMessage,
+        success: false
+      });
     } finally {
       setImporting(false);
+      console.log('Import process completed');
     }
   };
 
@@ -1603,15 +1624,44 @@ export default function MembersPage() {
                 )}
                 {importResult.errors && importResult.errors.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-yellow-200">
-                    <p className="text-sm font-medium text-yellow-800">Errors:</p>
-                    <ul className="text-sm list-disc list-inside mt-1 text-yellow-700">
-                      {importResult.errors.slice(0, 5).map((err: any, idx: number) => (
-                        <li key={idx}>Row {err.row}: {err.error}</li>
-                      ))}
-                      {importResult.errors.length > 5 && (
-                        <li>... and {importResult.errors.length - 5} more errors</li>
-                      )}
-                    </ul>
+                    <p className="text-sm font-medium text-yellow-800 mb-2">
+                      ⚠ {importResult.errors.length} error(s) occurred:
+                    </p>
+                    {importResult.errorSummary && (
+                      <div className="mb-2 p-2 bg-yellow-50 rounded text-xs">
+                        <p className="font-semibold text-yellow-900 mb-1">Error Summary:</p>
+                        <ul className="list-disc list-inside text-yellow-800">
+                          {importResult.errorSummary.map((summary: string, idx: number) => (
+                            <li key={idx}>{summary}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {importResult.availableColumns && (
+                      <div className="mb-2 p-2 bg-blue-50 rounded text-xs">
+                        <p className="font-semibold text-blue-900 mb-1">Available columns in your file:</p>
+                        <p className="text-blue-800">{importResult.availableColumns.join(', ')}</p>
+                        <p className="text-blue-700 mt-1 italic">
+                          Expected columns: Name, Email, Mobile (case-insensitive, with variations)
+                        </p>
+                      </div>
+                    )}
+                    <details className="mt-2">
+                      <summary className="text-sm font-medium text-yellow-800 cursor-pointer hover:text-yellow-900">
+                        View error details ({Math.min(importResult.errors.length, 50)} shown)
+                      </summary>
+                      <ul className="text-xs list-disc list-inside mt-2 max-h-48 overflow-y-auto text-yellow-700 space-y-1">
+                        {importResult.errors.slice(0, 50).map((err: any, idx: number) => (
+                          <li key={idx}>
+                            <span className="font-medium">Row {err.row}:</span> {err.error}
+                            {err.name && err.name !== '(empty)' && <span className="text-gray-600"> (Name: {err.name})</span>}
+                          </li>
+                        ))}
+                        {importResult.errors.length > 50 && (
+                          <li className="text-yellow-600 italic">... and {importResult.errors.length - 50} more errors</li>
+                        )}
+                      </ul>
+                    </details>
                   </div>
                 )}
               </div>

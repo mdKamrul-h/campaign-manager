@@ -2,14 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { parseExcelFile, parseCSVFile } from '@/lib/xlsx-utils';
 
+// Ensure this route is dynamic and not cached
+export const dynamic = 'force-dynamic';
+export const maxDuration = 300; // 5 minutes for large imports
+
 type SkippedRecord = { row: number; name: string; email: string; mobile: string; reason: string };
 
 export async function POST(request: NextRequest) {
+  console.log('Import API route called');
+  
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const editedDuplicatesJson = formData.get('editedDuplicates') as string | null;
     const editedDuplicates: Array<any> = [];
+    
+    console.log('File received:', file ? { name: file.name, size: file.size, type: file.type } : 'No file');
     
     if (editedDuplicatesJson) {
       try {
@@ -20,6 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!file) {
+      console.error('No file provided in request');
       return NextResponse.json(
         { error: 'No file provided' },
         { status: 400 }
@@ -31,7 +40,10 @@ export async function POST(request: NextRequest) {
     const isExcel = ['xlsx', 'xls'].includes(fileExtension || '');
     const isCSV = fileExtension === 'csv';
 
+    console.log('File extension:', fileExtension, 'isExcel:', isExcel, 'isCSV:', isCSV);
+
     if (!isExcel && !isCSV) {
+      console.error('Invalid file type:', fileExtension);
       return NextResponse.json(
         { error: 'Invalid file type. Please upload an Excel file (.xlsx or .xls) or CSV file (.csv)' },
         { status: 400 }
@@ -40,15 +52,28 @@ export async function POST(request: NextRequest) {
 
     // Read file based on type
     let data: any[];
-    if (isCSV) {
-      const text = await file.text();
-      data = await parseCSVFile(text);
-    } else {
-      const arrayBuffer = await file.arrayBuffer();
-      data = await parseExcelFile(arrayBuffer);
+    try {
+      if (isCSV) {
+        console.log('Parsing CSV file...');
+        const text = await file.text();
+        data = await parseCSVFile(text);
+        console.log('CSV parsed, rows:', data.length);
+      } else {
+        console.log('Parsing Excel file...');
+        const arrayBuffer = await file.arrayBuffer();
+        data = await parseExcelFile(arrayBuffer);
+        console.log('Excel parsed, rows:', data.length);
+      }
+    } catch (parseError: any) {
+      console.error('Error parsing file:', parseError);
+      return NextResponse.json(
+        { error: `Failed to parse file: ${parseError.message || 'Unknown error'}` },
+        { status: 400 }
+      );
     }
 
     if (data.length === 0) {
+      console.error('File is empty after parsing');
       return NextResponse.json(
         { error: 'File is empty' },
         { status: 400 }
@@ -64,6 +89,9 @@ export async function POST(request: NextRequest) {
     
     // Log available columns for debugging
     console.log('Available columns in file:', availableColumns);
+    if (data.length > 0) {
+      console.log('Sample first row data:', JSON.stringify(data[0], null, 2));
+    }
 
     // Fetch existing members to check for duplicates
     // Only check by mobile number (not email)
@@ -94,10 +122,13 @@ export async function POST(request: NextRequest) {
         const getValue = (variations: string[]): string => {
           // First try direct matches (exact column names)
           for (const variation of variations) {
-            // Try exact match
+            // Try exact match (case-sensitive)
             const value = row[variation];
             if (value !== undefined && value !== null && value !== '') {
-              return String(value).trim();
+              const strValue = String(value).trim();
+              if (strValue !== '') {
+                return strValue;
+              }
             }
             
             // Try case-insensitive match via columnMap
@@ -106,19 +137,38 @@ export async function POST(request: NextRequest) {
               const actualCol = columnMap.get(normalized)!;
               const value2 = row[actualCol];
               if (value2 !== undefined && value2 !== null && value2 !== '') {
-                return String(value2).trim();
+                const strValue2 = String(value2).trim();
+                if (strValue2 !== '') {
+                  return strValue2;
+                }
               }
             }
           }
           
-          // Try partial/fuzzy matching (contains)
+          // Try partial/fuzzy matching (contains) - more aggressive matching
           for (const variation of variations) {
             const normalized = variation.toLowerCase().trim();
+            // Remove common words for better matching
+            const normalizedClean = normalized.replace(/\b(name|email|mobile|phone|contact|number|address)\b/gi, '').trim();
+            
             for (const [key, actualCol] of columnMap.entries()) {
-              if (key.includes(normalized) || normalized.includes(key)) {
+              const keyClean = key.replace(/\b(name|email|mobile|phone|contact|number|address)\b/gi, '').trim();
+              
+              // Try multiple matching strategies
+              if (
+                key.includes(normalized) || 
+                normalized.includes(key) ||
+                keyClean.includes(normalizedClean) ||
+                normalizedClean.includes(keyClean) ||
+                key.replace(/[_\s-]/g, '').includes(normalized.replace(/[_\s-]/g, '')) ||
+                normalized.replace(/[_\s-]/g, '').includes(key.replace(/[_\s-]/g, ''))
+              ) {
                 const value = row[actualCol];
                 if (value !== undefined && value !== null && value !== '') {
-                  return String(value).trim();
+                  const strValue = String(value).trim();
+                  if (strValue !== '') {
+                    return strValue;
+                  }
                 }
               }
             }
@@ -166,11 +216,11 @@ export async function POST(request: NextRequest) {
           if (!email) missingFields.push('Email');
           if (!mobile) missingFields.push('Mobile');
           
-          // If email is missing, provide helpful info about available columns
+          // Provide helpful info about available columns
           let errorMsg = `Missing required fields: ${missingFields.join(', ')}`;
-          if (!email && rowNumber === 2) {
-            // Only show column info for first error row to avoid spam
-            errorMsg += `. Available columns: ${availableColumns.join(', ')}`;
+          // Show available columns for first few errors to help user understand the issue
+          if (errors.length < 5) {
+            errorMsg += `. Available columns in file: ${availableColumns.join(', ')}`;
           }
           
           errors.push({
@@ -674,14 +724,24 @@ export async function POST(request: NextRequest) {
     // If no members were imported and there are errors, return error status
     if (totalUpserted === 0 && allErrors.length > 0) {
       console.error('Import failed: No members imported and errors occurred');
+      
+      // Group errors by type to provide helpful summary
+      const errorSummary: Record<string, number> = {};
+      allErrors.forEach(err => {
+        const errorType = err.error?.split(':')[0] || 'Unknown error';
+        errorSummary[errorType] = (errorSummary[errorType] || 0) + 1;
+      });
+      
       return NextResponse.json({
         success: false,
         error: `Failed to import members. ${allErrors.length} error(s) occurred.`,
+        errorSummary: Object.entries(errorSummary).map(([type, count]) => `${type}: ${count}`),
         imported: 0,
         updated: 0,
         skipped: skipped.length,
         total: data.length,
-        errors: allErrors.slice(0, 50), // Limit to first 50 errors
+        errors: allErrors.slice(0, 100), // Show first 100 errors
+        availableColumns: availableColumns, // Include available columns to help user
         skippedDetails: skipped.length > 0 ? skipped.slice(0, 20) : undefined
       }, { status: 400 });
     }
@@ -697,8 +757,18 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Import error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code
+    });
+    
     return NextResponse.json(
-      { error: error.message || 'Failed to import members' },
+      { 
+        error: error.message || 'Failed to import members',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      },
       { status: 500 }
     );
   }
